@@ -36,6 +36,28 @@ services:
       retries: 5
       start_period: 10s
 
+  # Local-only mail catcher. Captures every message the application sends during
+  # development so verification and password reset emails can be read in the
+  # browser instead of being delivered to real inboxes. Never used in production,
+  # where MAIL_* is configured by the deployment environment.
+  mailpit:
+    image: axllent/mailpit:v1.21
+    container_name: workflowhub-mailpit
+    restart: unless-stopped
+    environment:
+      MP_MAX_MESSAGES: 500
+    ports:
+      # SMTP endpoint the application delivers to.
+      - '${MAIL_PORT:-1025}:1025'
+      # Web UI for reading captured mail.
+      - '${MAILPIT_UI_PORT:-8025}:8025'
+    healthcheck:
+      test: ['CMD', '/mailpit', 'readyz']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
 volumes:
   workflowhub-postgres-data:
     name: workflowhub-postgres-data

@@ -3,6 +3,7 @@
 use App\Concerns\PasswordValidationRules;
 use App\Livewire\Actions\Logout;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\ValidationException;
 use Livewire\Component;
 
 new class extends Component {
@@ -19,7 +20,15 @@ new class extends Component {
             'password' => $this->currentPasswordRules(),
         ]);
 
-        tap(Auth::user(), $logout(...))->delete();
+        $user = Auth::user();
+
+        if ($user->isSoleOwnerOfAnyOrganization()) {
+            throw ValidationException::withMessages([
+                'password' => __('You are the only owner of an organization. Add another owner or delete the organization before deleting your account.'),
+            ]);
+        }
+
+        tap($user, $logout(...))->delete();
 
         $this->redirect('/', navigate: true);
     }

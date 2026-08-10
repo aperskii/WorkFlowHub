@@ -1,5 +1,9 @@
 <?php
 
+use App\Enums\OrganizationRole;
+use App\Models\Membership;
+use App\Models\Organization;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -47,4 +51,19 @@ expect()->extend('toBeOne', function () {
 function something()
 {
     // ..
+}
+
+/**
+ * Create a user holding the given role in the given organization.
+ */
+function memberWithRole(Organization $organization, OrganizationRole $role): User
+{
+    $user = User::factory()->create();
+
+    Membership::factory()
+        ->for($organization)
+        ->for($user)
+        ->create(['role' => $role]);
+
+    return $user;
 }

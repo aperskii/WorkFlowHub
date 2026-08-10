@@ -114,4 +114,25 @@ return [
 
     'password_timeout' => env('AUTH_PASSWORD_TIMEOUT', 10800),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Automatically Verify New Users
+    |--------------------------------------------------------------------------
+    |
+    | Local development convenience only. When enabled, users created through
+    | registration are marked as already verified, so a developer can reach the
+    | application immediately without opening the local mail catcher.
+    |
+    | This does not disable email verification: the User model still implements
+    | MustVerifyEmail, the "verified" middleware still guards every route, and
+    | Fortify still registers the verification routes. Only the stored state of
+    | a newly created user changes.
+    |
+    | This defaults to false so any environment that does not explicitly opt in
+    | keeps requiring email verification.
+    |
+    */
+
+    'auto_verify_new_users' => (bool) env('AUTH_AUTO_VERIFY_NEW_USERS', false),
+
 ];
