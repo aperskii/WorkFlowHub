@@ -38,4 +38,15 @@ enum OrganizationRole: string
             self::Employee => false,
         };
     }
+
+    /**
+     * Determine whether the role may create, update, and archive projects.
+     */
+    public function canManageProjects(): bool
+    {
+        return match ($this) {
+            self::Owner, self::Manager => true,
+            self::Employee => false,
+        };
+    }
 }

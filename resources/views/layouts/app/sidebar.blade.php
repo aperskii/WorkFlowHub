@@ -40,6 +40,15 @@
                         </flux:sidebar.item>
 
                         <flux:sidebar.item
+                            icon="folder"
+                            :href="route('organizations.projects.index', $organization)"
+                            :current="request()->routeIs('organizations.projects.*')"
+                            wire:navigate
+                        >
+                            {{ __('Projects') }}
+                        </flux:sidebar.item>
+
+                        <flux:sidebar.item
                             icon="users"
                             :href="route('organizations.members', $organization)"
                             :current="request()->routeIs('organizations.members')"

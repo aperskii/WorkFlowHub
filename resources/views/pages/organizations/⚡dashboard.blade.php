@@ -2,6 +2,8 @@
 
 use App\Enums\OrganizationRole;
 use App\Models\Organization;
+use App\Models\Project;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Locked;
@@ -52,6 +54,35 @@ new #[Title('Organization')] class extends Component {
     {
         return $this->organization->owners()->count();
     }
+
+    /**
+     * Get the number of projects owned by this organization.
+     */
+    #[Computed]
+    public function projectCount(): int
+    {
+        return $this->organization->projects()->count();
+    }
+
+    /**
+     * Get the number of active projects owned by this organization.
+     */
+    #[Computed]
+    public function activeProjectCount(): int
+    {
+        return $this->organization->projects()->active()->count();
+    }
+
+    /**
+     * Get this organization's most recently created projects.
+     *
+     * @return Collection<int, Project>
+     */
+    #[Computed]
+    public function recentProjects(): Collection
+    {
+        return $this->organization->projects()->latest()->take(5)->get();
+    }
 }; ?>
 
 <x-pages::organizations.layout
@@ -60,6 +91,15 @@ new #[Title('Organization')] class extends Component {
     :subheading="__('A summary of :name', ['name' => $organization->name])"
 >
     <x-slot:actions>
+        <flux:button
+            :href="route('organizations.projects.index', $organization)"
+            variant="filled"
+            icon="folder"
+            wire:navigate
+        >
+            {{ __('Projects') }}
+        </flux:button>
+
         <flux:button
             :href="route('organizations.members', $organization)"
             variant="filled"
@@ -81,7 +121,21 @@ new #[Title('Organization')] class extends Component {
         @endcan
     </x-slot:actions>
 
-    <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <x-stat-tile
+            :label="__('Active projects')"
+            :value="$this->activeProjectCount"
+            icon="bolt"
+            data-test="organization-active-project-count"
+        />
+
+        <x-stat-tile
+            :label="__('Total projects')"
+            :value="$this->projectCount"
+            icon="folder"
+            data-test="organization-project-count"
+        />
+
         <x-stat-tile
             :label="__('Members')"
             :value="$this->memberCount"
@@ -109,6 +163,48 @@ new #[Title('Organization')] class extends Component {
             icon="calendar-days"
         />
     </div>
+
+    <flux:card class="mt-6 space-y-3" data-test="recent-projects">
+        <div class="flex items-center justify-between gap-3">
+            <flux:heading size="lg">{{ __('Recent projects') }}</flux:heading>
+
+            <flux:button
+                :href="route('organizations.projects.index', $organization)"
+                variant="ghost"
+                size="sm"
+                icon-trailing="arrow-right"
+                wire:navigate
+            >
+                {{ __('View all') }}
+            </flux:button>
+        </div>
+
+        <flux:separator variant="subtle" />
+
+        @if ($this->recentProjects->isEmpty())
+            <flux:text class="text-sm" data-test="recent-projects-empty">
+                {{ __('No projects yet.') }}
+            </flux:text>
+        @else
+            <ul class="divide-y divide-zinc-200 dark:divide-zinc-700">
+                @foreach ($this->recentProjects as $project)
+                    <li class="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
+                        <flux:link
+                            :href="route('organizations.projects.show', [$organization, $project])"
+                            wire:navigate
+                            class="min-w-0 truncate font-medium"
+                        >
+                            {{ $project->name }}
+                        </flux:link>
+
+                        <flux:badge size="sm" inset="top bottom" :color="$project->status->color()">
+                            {{ $project->status->label() }}
+                        </flux:badge>
+                    </li>
+                @endforeach
+            </ul>
+        @endif
+    </flux:card>
 
     <flux:card class="mt-6 space-y-3">
         <flux:heading size="lg">{{ __('Organization details') }}</flux:heading>

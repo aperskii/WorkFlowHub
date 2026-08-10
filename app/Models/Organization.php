@@ -63,6 +63,16 @@ class Organization extends Model
     }
 
     /**
+     * Get the projects owned by this organization.
+     *
+     * @return HasMany<Project, $this>
+     */
+    public function projects(): HasMany
+    {
+        return $this->hasMany(Project::class);
+    }
+
+    /**
      * Determine whether the given user is a member of this organization.
      */
     public function hasMember(User $user): bool

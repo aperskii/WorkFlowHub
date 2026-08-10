@@ -2,6 +2,9 @@
     'organization',
     'heading' => '',
     'subheading' => '',
+    // Optional intermediate breadcrumb, e.g. Projects when viewing one project.
+    'parentLabel' => null,
+    'parentHref' => null,
 ])
 
 <div class="w-full">
@@ -18,6 +21,12 @@
                 >
                     {{ $organization->name }}
                 </flux:breadcrumbs.item>
+
+                @if (filled($parentLabel))
+                    <flux:breadcrumbs.item :href="$parentHref" wire:navigate>
+                        {{ $parentLabel }}
+                    </flux:breadcrumbs.item>
+                @endif
 
                 <flux:breadcrumbs.item>{{ $heading }}</flux:breadcrumbs.item>
             </flux:breadcrumbs>
