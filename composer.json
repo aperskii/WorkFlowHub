@@ -1,8 +1,8 @@
 {
     "$schema": "https://getcomposer.org/schema.json",
-    "name": "laravel/livewire-starter-kit",
+    "name": "workflowhub/workflowhub",
     "type": "project",
-    "description": "The official Laravel starter kit for Livewire.",
+    "description": "WorkFlowHub is a multi-tenant SaaS platform for small companies and agencies to manage projects, teams, clients, tasks, and time tracking.",
     "keywords": [
         "laravel",
         "framework"
