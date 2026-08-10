@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
+use RuntimeException;
 
 /**
  * @property int $id
@@ -41,6 +42,49 @@ class Membership extends Model
         return [
             'role' => OrganizationRole::class,
         ];
+    }
+
+    /**
+     * Guard the ownership invariant at the model layer.
+     *
+     * The policies already refuse to demote or remove a final owner, but they
+     * only run where they are consulted. Enforcing it here makes it a real
+     * invariant for every caller: actions, console commands, and future code.
+     *
+     * Deleting an organization or a user removes memberships through a database
+     * cascade rather than Eloquent, so these hooks never block those paths.
+     */
+    protected static function booted(): void
+    {
+        static::updating(function (Membership $membership): void {
+            if (! $membership->isDirty('role')) {
+                return;
+            }
+
+            if ($membership->role !== OrganizationRole::Owner && $membership->wasLastOwner()) {
+                throw new RuntimeException(
+                    "Cannot change membership [{$membership->id}] because it is the last owner of its organization."
+                );
+            }
+        });
+
+        static::deleting(function (Membership $membership): void {
+            if ($membership->wasLastOwner()) {
+                throw new RuntimeException(
+                    "Cannot remove membership [{$membership->id}] because it is the last owner of its organization."
+                );
+            }
+        });
+    }
+
+    /**
+     * Determine whether this membership is the organization's only owner as
+     * currently stored, ignoring any unsaved change to its role.
+     */
+    public function wasLastOwner(): bool
+    {
+        return $this->getRawOriginal('role') === OrganizationRole::Owner->value
+            && $this->organization->owners()->count() === 1;
     }
 
     /**
