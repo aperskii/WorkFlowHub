@@ -1,0 +1,43 @@
+```gitignore
+# Environment
+.env
+.env.*
+!.env.example
+
+# Laravel
+/storage/*.key
+/storage/app/*
+/storage/framework/cache/*
+/storage/framework/sessions/*
+/storage/framework/testing/*
+/storage/framework/views/*
+/bootstrap/cache/*
+
+# Dependencies
+/vendor/
+/node_modules/
+
+# Build / frontend
+/public/build/
+/public/hot
+
+# IDE
+.idea/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Testing / coverage
+.phpunit.result.cache
+.phpunit.cache/
+coverage/
+
+# Local tools
+.php-cs-fixer.cache
+.phpstan.cache
+```
