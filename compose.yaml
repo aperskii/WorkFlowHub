@@ -1,0 +1,41 @@
+name: workflowhub
+
+# PostgreSQL is currently the only containerized dependency for WorkFlowHub.
+# The application itself runs on the host (php artisan serve / npm run dev).
+#
+# All credentials and the published host port are read from the project `.env`
+# file, which Docker Compose loads automatically. The same DB_* variables
+# configure both this service and Laravel, so a single file drives both.
+#
+# Start with: docker compose up -d
+services:
+  postgres:
+    image: postgres:18
+    container_name: workflowhub-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:?DB_DATABASE is required in .env}
+      POSTGRES_USER: ${DB_USERNAME:?DB_USERNAME is required in .env}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required in .env}
+      # Consumed by the init script to create the dedicated test database.
+      DB_TEST_DATABASE: ${DB_TEST_DATABASE:-workflowhub_testing}
+    ports:
+      # Host port is configurable so it cannot collide with other local
+      # PostgreSQL instances. Container always listens on 5432 internally.
+      - '${DB_PORT:-5433}:5432'
+    volumes:
+      # postgres:18 declares VOLUME /var/lib/postgresql with
+      # PGDATA=/var/lib/postgresql/18/docker.
+      - workflowhub-postgres-data:/var/lib/postgresql
+      # Runs only on first initialization of an empty data volume.
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  workflowhub-postgres-data:
+    name: workflowhub-postgres-data
