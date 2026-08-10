@@ -40,6 +40,27 @@ enum OrganizationRole: string
     }
 
     /**
+     * Get the roles that may be granted through an organization invitation.
+     *
+     * Ownership is deliberately excluded: it is granted only through the member
+     * role management flow, so an invitation can never mint an owner.
+     *
+     * @return array<int, self>
+     */
+    public static function invitable(): array
+    {
+        return [self::Manager, self::Employee];
+    }
+
+    /**
+     * Determine whether this role may be granted through an invitation.
+     */
+    public function isInvitable(): bool
+    {
+        return in_array($this, self::invitable(), strict: true);
+    }
+
+    /**
      * Determine whether the role may create, update, and archive projects.
      */
     public function canManageProjects(): bool

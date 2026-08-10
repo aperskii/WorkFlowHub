@@ -135,4 +135,17 @@ return [
 
     'auto_verify_new_users' => (bool) env('AUTH_AUTO_VERIFY_NEW_USERS', false),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Organization Invitation Expiry
+    |--------------------------------------------------------------------------
+    |
+    | The number of days an organization invitation stays valid before it can no
+    | longer be accepted. Resending an invitation rotates its token and restarts
+    | this window.
+    |
+    */
+
+    'invitation_expires_after_days' => (int) env('AUTH_INVITATION_EXPIRES_AFTER_DAYS', 7),
+
 ];
