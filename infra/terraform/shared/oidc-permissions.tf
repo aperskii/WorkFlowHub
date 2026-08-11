@@ -360,6 +360,42 @@ data "aws_iam_policy_document" "ci_registry_identity" {
     actions   = ["sts:GetCallerIdentity"]
     resources = ["*"]
   }
+
+  # Enough to run Terraform against the dev environment: read and write its
+  # state, and take the lock while doing so.
+  #
+  # Scoped to the dev/ prefix, deliberately. The shared state describes this
+  # role and the policies attached to it, so write access there would let a
+  # workflow rewrite its own permissions — the same escalation the IAM scoping
+  # above exists to prevent. Applying the shared configuration stays a manual
+  # step run by a human.
+  statement {
+    sid    = "ReadWriteDevState"
+    effect = "Allow"
+
+    actions = [
+      "s3:GetObject",
+      "s3:PutObject",
+      "s3:DeleteObject",
+    ]
+
+    resources = ["${var.state_bucket_arn}/dev/*"]
+  }
+
+  # ListBucket is required for Terraform to determine whether a state object
+  # exists at all. Constrained by prefix so it cannot enumerate the shared state.
+  statement {
+    sid       = "ListDevState"
+    effect    = "Allow"
+    actions   = ["s3:ListBucket"]
+    resources = [var.state_bucket_arn]
+
+    condition {
+      test     = "StringLike"
+      variable = "s3:prefix"
+      values   = ["dev/*"]
+    }
+  }
 }
 
 resource "aws_iam_policy" "ci_registry_identity" {

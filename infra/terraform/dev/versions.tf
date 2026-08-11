@@ -16,8 +16,18 @@ terraform {
     }
   }
 
-  # State is local for now. This environment is destroyed at the end of each
-  # session, one person works on it, and the .tf files in git are the only thing
-  # that needs to survive. A remote backend is a later, dedicated step; see
-  # ADR-008 for why it is deferred rather than skipped.
+  # Remote, so that something other than one laptop can run Terraform against
+  # this environment. That is the reason it moved: the state, not the
+  # permissions, was what stopped the deployment workflow provisioning anything.
+  #
+  # Kept under a separate key from the shared state. The two remain independent
+  # configurations for the reasons in ADR-009; sharing a bucket is storage, not
+  # a shared lifecycle.
+  backend "s3" {
+    bucket       = "workflowhub-tfstate-fc58eb3e"
+    key          = "dev/terraform.tfstate"
+    region       = "eu-central-1"
+    encrypt      = true
+    use_lockfile = true
+  }
 }

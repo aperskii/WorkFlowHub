@@ -54,6 +54,19 @@ variable "github_subject_prefixes" {
   ]
 }
 
+variable "state_bucket_arn" {
+  description = <<-EOT
+    ARN of the bucket holding Terraform state, created by
+    infra/terraform/bootstrap.
+
+    Passed as a literal rather than read from that state, for the reason in
+    ADR-009 §2: this configuration should not depend on the internal layout of
+    another.
+  EOT
+  type        = string
+  default     = "arn:aws:s3:::workflowhub-tfstate-fc58eb3e"
+}
+
 variable "dev_resource_prefix" {
   description = "Name prefix of the resources the deployment role may manage."
   type        = string
