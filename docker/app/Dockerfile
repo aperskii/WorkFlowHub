@@ -101,6 +101,12 @@ COPY --from=assets --chown=www-data:www-data /app/public/build ./public/build
 # Everything the unprivileged runtime user writes to has to exist and be owned
 # before the drop to www-data: Laravel's caches, plus nginx and supervisor
 # scratch space, which normally live under root-owned paths.
+#
+# /var/log/nginx is listed alongside /var/lib/nginx because the latter's `logs`
+# entry is a symlink to the former, and chown -R changes the symlink rather than
+# following it. Without the target, nginx fails to open its compiled-in default
+# error log at startup and emits a permission alert before it reads this image's
+# configuration and switches to stderr.
 RUN set -eux; \
     chmod +x /usr/local/bin/entrypoint /usr/local/bin/exit-on-fatal; \
     rm -rf docker; \
@@ -112,12 +118,13 @@ RUN set -eux; \
         storage/logs \
         bootstrap/cache \
         /tmp/nginx \
-        /var/lib/nginx/logs; \
+        /var/log/nginx; \
     chown -R www-data:www-data \
         storage \
         bootstrap/cache \
         /tmp/nginx \
-        /var/lib/nginx; \
+        /var/lib/nginx \
+        /var/log/nginx; \
     chmod -R u+rwX storage bootstrap/cache
 
 USER www-data
