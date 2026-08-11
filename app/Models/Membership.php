@@ -75,6 +75,18 @@ class Membership extends Model
                 );
             }
         });
+
+        // Somebody who is no longer a member must not stay assigned to that
+        // organization's work. Their assignments elsewhere are untouched.
+        static::deleted(function (Membership $membership): void {
+            Task::query()
+                ->where('assigned_to_user_id', $membership->user_id)
+                ->whereHas(
+                    'project',
+                    fn (Builder $query) => $query->where('organization_id', $membership->organization_id)
+                )
+                ->update(['assigned_to_user_id' => null]);
+        });
     }
 
     /**

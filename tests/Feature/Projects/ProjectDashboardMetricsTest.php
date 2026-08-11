@@ -103,13 +103,15 @@ test('the dashboard keeps the member, owner, and role metrics', function () {
         ->assertSee(OrganizationRole::Owner->label());
 });
 
-test('the dashboard adds no task or time tracking metrics yet', function () {
+test('the dashboard shows the documented task metrics and nothing beyond them', function () {
     $organization = Organization::factory()->create();
     $owner = memberWithRole($organization, OrganizationRole::Owner);
 
     Livewire::actingAs($owner)
         ->test('pages::organizations.dashboard', ['organization' => $organization])
-        ->assertDontSee('Open tasks')
-        ->assertDontSee('Completed tasks')
-        ->assertDontSee('Tracked hours');
+        ->assertSee('Open tasks')
+        ->assertSee('Completed tasks')
+        ->assertDontSee('Tracked hours')
+        ->assertDontSee('Recent activity')
+        ->assertDontSee('Clients');
 });

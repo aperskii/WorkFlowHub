@@ -101,6 +101,16 @@ class User extends Authenticatable implements MustVerifyEmail
     }
 
     /**
+     * Get the tasks currently assigned to this user.
+     *
+     * @return HasMany<Task, $this>
+     */
+    public function assignedTasks(): HasMany
+    {
+        return $this->hasMany(Task::class, 'assigned_to_user_id');
+    }
+
+    /**
      * Get this user's membership of the given organization, if any.
      */
     public function membershipFor(Organization $organization): ?Membership

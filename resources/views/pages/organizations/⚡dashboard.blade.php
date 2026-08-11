@@ -3,6 +3,8 @@
 use App\Enums\OrganizationRole;
 use App\Models\Organization;
 use App\Models\Project;
+use App\Models\Task;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Attributes\Computed;
@@ -74,6 +76,37 @@ new #[Title('Organization')] class extends Component {
     }
 
     /**
+     * Get the number of open tasks across this organization's projects.
+     */
+    #[Computed]
+    public function openTaskCount(): int
+    {
+        return $this->organizationTasks()->open()->count();
+    }
+
+    /**
+     * Get the number of completed tasks across this organization's projects.
+     */
+    #[Computed]
+    public function completedTaskCount(): int
+    {
+        return $this->organizationTasks()->completed()->count();
+    }
+
+    /**
+     * Build a task query scoped to this organization through its projects.
+     *
+     * @return Builder<Task>
+     */
+    private function organizationTasks(): Builder
+    {
+        return Task::query()->whereHas(
+            'project',
+            fn (Builder $query) => $query->where('organization_id', $this->organization->id)
+        );
+    }
+
+    /**
      * Get this organization's most recently created projects.
      *
      * @return Collection<int, Project>
@@ -134,6 +167,20 @@ new #[Title('Organization')] class extends Component {
             :value="$this->projectCount"
             icon="folder"
             data-test="organization-project-count"
+        />
+
+        <x-stat-tile
+            :label="__('Open tasks')"
+            :value="$this->openTaskCount"
+            icon="clipboard-document-list"
+            data-test="organization-open-task-count"
+        />
+
+        <x-stat-tile
+            :label="__('Completed tasks')"
+            :value="$this->completedTaskCount"
+            icon="check-circle"
+            data-test="organization-completed-task-count"
         />
 
         <x-stat-tile

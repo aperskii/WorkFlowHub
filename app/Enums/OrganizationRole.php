@@ -70,4 +70,18 @@ enum OrganizationRole: string
             self::Employee => false,
         };
     }
+
+    /**
+     * Determine whether the role may create, update, and assign tasks.
+     *
+     * Kept separate from project management so task rules can change without
+     * touching who may archive a project.
+     */
+    public function canManageTasks(): bool
+    {
+        return match ($this) {
+            self::Owner, self::Manager => true,
+            self::Employee => false,
+        };
+    }
 }

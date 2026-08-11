@@ -305,6 +305,8 @@ new #[Title('Project')] class extends Component {
         </flux:card>
     </div>
 
+    <livewire:pages::projects.tasks :project="$project" />
+
     @can('archive', $project)
         <flux:modal name="confirm-project-archive" class="max-w-lg">
             <div class="space-y-6">
