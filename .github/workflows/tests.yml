@@ -61,3 +61,142 @@ jobs:
 
       - name: Run CI Checks
         run: composer ci:check
+
+  # Builds the production image and proves it boots. Deliberately a separate job:
+  # a broken Dockerfile should fail on its own rather than inside the Pest run,
+  # and neither job needs to wait for the other.
+  #
+  # Nothing is pushed anywhere. No registry exists yet, and this job only
+  # establishes that the image builds and serves traffic.
+  image:
+    runs-on: ubuntu-latest
+
+    # The container is exercised against a real PostgreSQL, because the image
+    # having a working pdo_pgsql is part of what is being checked.
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: workflowhub
+          POSTGRES_USER: workflowhub
+          POSTGRES_PASSWORD: change_me
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd="pg_isready -U workflowhub -d workflowhub"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    env:
+      IMAGE: workflowhub-app:ci
+      CONTAINER: workflowhub-app-ci
+      # Throwaway, generated per run. Never a real key and never reused.
+      APP_KEY: base64:AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build image
+        run: docker build -f docker/app/Dockerfile -t "$IMAGE" .
+
+      - name: Report image size
+        run: |
+          docker images "$IMAGE" --format 'image size: {{.Size}}'
+
+      # --network host lets the container reach the service container on the
+      # runner's mapped port, and publishes nginx on 8080 without -p.
+      - name: Migrate the database from inside the image
+        run: |
+          docker run --rm --network host \
+            -e APP_ENV=production \
+            -e APP_KEY="$APP_KEY" \
+            -e APP_DEBUG=false \
+            -e DB_CONNECTION=pgsql \
+            -e DB_HOST=127.0.0.1 \
+            -e DB_PORT=5433 \
+            -e DB_DATABASE=workflowhub \
+            -e DB_USERNAME=workflowhub \
+            -e DB_PASSWORD=change_me \
+            "$IMAGE" php artisan migrate --force
+
+      - name: Start container
+        run: |
+          docker run -d --name "$CONTAINER" --network host \
+            -e APP_ENV=production \
+            -e APP_KEY="$APP_KEY" \
+            -e APP_DEBUG=false \
+            -e APP_URL=http://127.0.0.1:8080 \
+            -e AUTH_AUTO_VERIFY_NEW_USERS=false \
+            -e DB_CONNECTION=pgsql \
+            -e DB_HOST=127.0.0.1 \
+            -e DB_PORT=5433 \
+            -e DB_DATABASE=workflowhub \
+            -e DB_USERNAME=workflowhub \
+            -e DB_PASSWORD=change_me \
+            -e SESSION_DRIVER=database \
+            -e CACHE_STORE=database \
+            -e QUEUE_CONNECTION=database \
+            "$IMAGE"
+
+      - name: Wait for the health endpoint
+        run: |
+          for attempt in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/up || true)
+            if [ "$code" = "200" ]; then
+              echo "/up returned 200 after ${attempt}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::/up never returned 200 (last status: ${code:-none})"
+          docker logs "$CONTAINER" || true
+          exit 1
+
+      - name: Check both processes are supervised
+        run: |
+          docker exec "$CONTAINER" supervisorctl \
+            -c /etc/supervisor/supervisord.conf status
+          docker exec "$CONTAINER" supervisorctl \
+            -c /etc/supervisor/supervisord.conf status php-fpm | grep -q RUNNING
+          docker exec "$CONTAINER" supervisorctl \
+            -c /etc/supervisor/supervisord.conf status nginx | grep -q RUNNING
+
+      - name: Check the application serves a real page
+        run: |
+          for path in / /login /register; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:8080${path}")
+            echo "${path} -> ${code}"
+            [ "$code" = "200" ] || { echo "::error::${path} returned ${code}"; exit 1; }
+          done
+
+      # The image is supposed to refuse these, so CI checks the refusals rather
+      # than only the happy path.
+      - name: Check the container fails closed on unsafe configuration
+        run: |
+          if docker run --rm --network host \
+              -e APP_ENV=production -e DB_CONNECTION=pgsql \
+              "$IMAGE" >/dev/null 2>&1; then
+            echo "::error::container started without APP_KEY"
+            exit 1
+          fi
+          echo "refused to start without APP_KEY"
+
+          if docker run --rm --network host \
+              -e APP_ENV=production -e APP_KEY="$APP_KEY" -e APP_DEBUG=true \
+              "$IMAGE" >/dev/null 2>&1; then
+            echo "::error::container started with APP_DEBUG=true in production"
+            exit 1
+          fi
+          echo "refused to start with APP_DEBUG=true in production"
+
+      - name: Container logs
+        if: failure()
+        run: docker logs "$CONTAINER" || true
+
+      - name: Tear down
+        if: always()
+        run: docker rm -f "$CONTAINER" || true
