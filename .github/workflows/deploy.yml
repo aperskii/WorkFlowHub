@@ -1,0 +1,320 @@
+name: deploy
+
+# Manual only. A push to main should not reach into AWS on its own: the dev
+# environment is created and destroyed by hand, so most pushes land while it
+# does not exist, and an automatic deploy would fail more often than it worked.
+#
+# The OIDC trust in infra/terraform/shared is scoped to refs/heads/main, so this
+# must be dispatched from main or the role assumption is refused.
+on:
+  workflow_dispatch:
+
+# contents: read to check the repository out; id-token: write so the runner can
+# request the OIDC token it exchanges for AWS credentials. Without the second
+# one the assume-role step fails with a confusing "Credentials could not be
+# loaded" rather than a permissions error.
+permissions:
+  contents: read
+  id-token: write
+
+# Two deploys at once would run migrations concurrently against one database.
+# cancel-in-progress stays false on purpose: interrupting a half-applied
+# migration is worse than waiting for it to finish.
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: eu-central-1
+
+  # Held as a repository variable rather than written here, because the ARN
+  # embeds the AWS account ID and this repository is public. Not a secret — AWS
+  # treats account IDs as identifiers, and the role is unusable without a
+  # GitHub-signed token naming this repository and branch — but there is no
+  # reason to publish it permanently.
+  #
+  # Set under Settings > Secrets and variables > Actions > Variables:
+  #   AWS_DEPLOY_ROLE = arn:aws:iam::<account>:role/workflowhub-github-actions
+  # Its value is the github_actions_role_arn output of infra/terraform/shared.
+  AWS_ROLE: ${{ vars.AWS_DEPLOY_ROLE }}
+
+  CLUSTER: workflowhub-dev
+  SERVICE: workflowhub-dev-app
+  MIGRATE_TASK: workflowhub-dev-migrate
+  TARGET_GROUP: workflowhub-dev-app
+  LOAD_BALANCER: workflowhub-dev
+  REPOSITORY: workflowhub-app
+  LOG_GROUP: /ecs/workflowhub-dev
+
+jobs:
+  deploy:
+    name: Build, migrate, and release
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # An unset variable would reach the next step as an empty role-to-assume,
+      # which fails with a generic credentials error rather than saying what is
+      # actually wrong.
+      - name: Check the deployment role is configured
+        run: |
+          if [ -z "$AWS_ROLE" ]; then
+            echo "::error::Repository variable AWS_DEPLOY_ROLE is not set."
+            echo "::error::Set it under Settings > Secrets and variables > Actions > Variables"
+            echo "::error::to the github_actions_role_arn output of infra/terraform/shared."
+            exit 1
+          fi
+          echo "role configured"
+
+      # Exchanges a GitHub-signed OIDC token for short-lived AWS credentials.
+      # No access key is stored in this repository.
+      - name: Assume the deployment role
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
+        with:
+          role-to-assume: ${{ env.AWS_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: github-actions-deploy-${{ github.run_id }}
+
+      # Terraform is run from a developer's machine and its state lives there,
+      # so this workflow deploys onto infrastructure that already exists rather
+      # than creating it. Checking first turns "the environment is not up" into
+      # one clear message instead of a confusing failure four steps later.
+      - name: Check the environment exists
+        run: |
+          missing=0
+
+          cluster_status="$(aws ecs describe-clusters --clusters "$CLUSTER" \
+            --query 'clusters[0].status' --output text 2>/dev/null || echo NONE)"
+          if [ "$cluster_status" != "ACTIVE" ]; then
+            echo "::error::ECS cluster '$CLUSTER' is '${cluster_status}', expected ACTIVE."
+            missing=1
+          fi
+
+          service_status="$(aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" \
+            --query 'services[0].status' --output text 2>/dev/null || echo NONE)"
+          if [ "$service_status" != "ACTIVE" ]; then
+            echo "::error::ECS service '$SERVICE' is '${service_status}', expected ACTIVE."
+            missing=1
+          fi
+
+          if ! aws ecs describe-task-definition --task-definition "$MIGRATE_TASK" \
+              >/dev/null 2>&1; then
+            echo "::error::Task definition '$MIGRATE_TASK' not found."
+            missing=1
+          fi
+
+          if [ "$missing" -ne 0 ]; then
+            echo "::error::Run 'terraform apply' in infra/terraform/dev before deploying."
+            exit 1
+          fi
+
+          echo "environment is present"
+
+      - name: Sign in to the registry
+        run: |
+          registry="$(aws sts get-caller-identity --query Account --output text)"
+          registry="${registry}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+          echo "REGISTRY=${registry}" >> "$GITHUB_ENV"
+          echo "IMAGE=${registry}/${REPOSITORY}" >> "$GITHUB_ENV"
+
+          aws ecr get-login-password --region "$AWS_REGION" \
+            | docker login --username AWS --password-stdin "$registry"
+
+      # Two tags for one image. The task definition references :dev, so that is
+      # what a deployment actually pulls; the commit tag exists so a running
+      # container can be traced back to a commit, and so a previous build can be
+      # rolled back to by digest. Pinning the task definition to the commit tag
+      # would be better still, but the image is fixed in Terraform, and changing
+      # it here would show up as drift on the next plan.
+      - name: Build and push the image
+        run: |
+          docker build -f docker/app/Dockerfile \
+            -t "${IMAGE}:dev" \
+            -t "${IMAGE}:${GITHUB_SHA}" \
+            .
+
+          docker push "${IMAGE}:dev"
+          docker push "${IMAGE}:${GITHUB_SHA}"
+
+          digest="$(docker inspect --format='{{index .RepoDigests 0}}' "${IMAGE}:dev")"
+          echo "IMAGE_DIGEST=${digest}" >> "$GITHUB_ENV"
+          echo "pushed ${digest}"
+
+      # Subnets and the security group are read from tags rather than from
+      # Terraform outputs, which this runner has no access to.
+      - name: Resolve the task network configuration
+        run: |
+          vpc="$(aws ec2 describe-vpcs \
+            --filters 'Name=tag:Project,Values=WorkFlowHub' 'Name=tag:Environment,Values=dev' \
+            --query 'Vpcs[0].VpcId' --output text)"
+
+          subnets="$(aws ec2 describe-subnets \
+            --filters "Name=vpc-id,Values=${vpc}" 'Name=tag:Tier,Values=public' \
+            --query 'Subnets[].SubnetId' --output text | tr '\t' ',')"
+
+          sg="$(aws ec2 describe-security-groups \
+            --filters "Name=vpc-id,Values=${vpc}" "Name=group-name,Values=${SERVICE}" \
+            --query 'SecurityGroups[0].GroupId' --output text)"
+
+          if [ -z "$subnets" ] || [ "$sg" = "None" ]; then
+            echo "::error::Could not resolve subnets or security group in ${vpc}."
+            exit 1
+          fi
+
+          # assignPublicIp is required: without a NAT gateway a task with no
+          # public address cannot reach ECR and fails to start (ADR-008).
+          echo "NETWORK_CONFIG=awsvpcConfiguration={subnets=[${subnets}],securityGroups=[${sg}],assignPublicIp=ENABLED}" >> "$GITHUB_ENV"
+          echo "subnets=${subnets} sg=${sg}"
+
+      # The gate. Migrations run to completion as a one-off task before anything
+      # serves traffic, and a non-zero exit stops the deployment here.
+      - name: Run database migrations
+        id: migrate
+        run: |
+          task_arn="$(aws ecs run-task \
+            --cluster "$CLUSTER" \
+            --task-definition "$MIGRATE_TASK" \
+            --launch-type FARGATE \
+            --network-configuration "$NETWORK_CONFIG" \
+            --started-by "gha-${GITHUB_RUN_ID}" \
+            --query 'tasks[0].taskArn' --output text)"
+
+          if [ -z "$task_arn" ] || [ "$task_arn" = "None" ]; then
+            echo "::error::Failed to start the migration task."
+            exit 1
+          fi
+
+          task_id="${task_arn##*/}"
+          echo "MIGRATE_TASK_ID=${task_id}" >> "$GITHUB_ENV"
+          echo "migration task ${task_id}"
+
+          aws ecs wait tasks-stopped --cluster "$CLUSTER" --tasks "$task_id"
+
+          exit_code="$(aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$task_id" \
+            --query 'tasks[0].containers[0].exitCode' --output text)"
+          reason="$(aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$task_id" \
+            --query 'tasks[0].stoppedReason' --output text)"
+
+          echo "exit code: ${exit_code} (${reason})"
+
+          if [ "$exit_code" != "0" ]; then
+            echo "::error::Migrations failed with exit code ${exit_code}: ${reason}"
+            exit 1
+          fi
+
+      # Runs even when the step above fails, because the reason a migration
+      # failed is in this output and nowhere else.
+      - name: Migration output
+        if: always() && env.MIGRATE_TASK_ID != ''
+        run: |
+          aws logs get-log-events \
+            --log-group-name "$LOG_GROUP" \
+            --log-stream-name "ecs/migrate/${MIGRATE_TASK_ID}" \
+            --start-from-head \
+            --query 'events[].message' --output text \
+            | tr '\t' '\n' || echo "(log stream not available yet)"
+
+      # Only reached when migrations succeeded. force-new-deployment makes the
+      # service pull :dev again rather than reuse the image it already has.
+      - name: Release the new version
+        run: |
+          aws ecs update-service \
+            --cluster "$CLUSTER" \
+            --service "$SERVICE" \
+            --desired-count 1 \
+            --force-new-deployment \
+            --query 'service.{desired:desiredCount}' --output text
+
+          echo "waiting for the service to reach steady state"
+          aws ecs wait services-stable --cluster "$CLUSTER" --services "$SERVICE"
+          echo "service stable"
+
+      # Steady state means the task is running, not that the load balancer will
+      # send it traffic. The target group health check calls /up/ready, which
+      # queries the database, so this is the first point at which the deployment
+      # is proven rather than assumed.
+      - name: Wait for the load balancer to accept the task
+        run: |
+          tg="$(aws elbv2 describe-target-groups --names "$TARGET_GROUP" \
+            --query 'TargetGroups[0].TargetGroupArn' --output text)"
+
+          for attempt in $(seq 1 40); do
+            state="$(aws elbv2 describe-target-health --target-group-arn "$tg" \
+              --query 'TargetHealthDescriptions[0].TargetHealth.State' --output text)"
+
+            case "$state" in
+              healthy)
+                echo "target healthy after ${attempt} checks"
+                exit 0
+                ;;
+              unhealthy|draining)
+                reason="$(aws elbv2 describe-target-health --target-group-arn "$tg" \
+                  --query 'TargetHealthDescriptions[0].TargetHealth.Description' --output text)"
+                echo "::error::Target is ${state}: ${reason}"
+                exit 1
+                ;;
+            esac
+
+            sleep 5
+          done
+
+          echo "::error::Target never became healthy."
+          exit 1
+
+      - name: Smoke test through the load balancer
+        run: |
+          dns="$(aws elbv2 describe-load-balancers --names "$LOAD_BALANCER" \
+            --query 'LoadBalancers[0].DNSName' --output text)"
+          echo "APP_URL=http://${dns}" >> "$GITHUB_ENV"
+
+          failed=0
+          for path in /up /up/ready / /login; do
+            code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "http://${dns}${path}")"
+            echo "${path} -> ${code}"
+            [ "$code" = "200" ] || failed=1
+          done
+
+          if [ "$failed" -ne 0 ]; then
+            echo "::error::One or more endpoints did not return 200."
+            exit 1
+          fi
+
+      - name: Summary
+        if: success()
+        run: |
+          {
+            echo "### Deployed"
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Commit | \`${GITHUB_SHA}\` |"
+            echo "| Image | \`${IMAGE_DIGEST}\` |"
+            echo "| URL | ${APP_URL} |"
+            echo
+            echo "The environment bills by the hour while it runs."
+            echo "Tear it down with \`terraform destroy\` in \`infra/terraform/dev\`."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # A failed deployment leaves the service scaled up and cycling tasks,
+      # which costs money and tells you nothing. These are the two places the
+      # cause is actually recorded.
+      - name: Diagnostics on failure
+        if: failure()
+        run: |
+          echo "--- recent service events ---"
+          aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" \
+            --query 'services[0].events[:10].message' --output text | tr '\t' '\n' || true
+
+          echo "--- target health ---"
+          tg="$(aws elbv2 describe-target-groups --names "$TARGET_GROUP" \
+            --query 'TargetGroups[0].TargetGroupArn' --output text 2>/dev/null || true)"
+          if [ -n "$tg" ] && [ "$tg" != "None" ]; then
+            aws elbv2 describe-target-health --target-group-arn "$tg" \
+              --query 'TargetHealthDescriptions[].{target:Target.Id,state:TargetHealth.State,reason:TargetHealth.Description}' \
+              --output table || true
+          fi
