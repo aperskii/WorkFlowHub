@@ -1,0 +1,58 @@
+# Build context exclusions.
+#
+# vendor/ and node_modules/ are deliberately excluded: both are rebuilt inside
+# the image from composer.lock / package-lock.json, so shipping the host copies
+# would bloat the context and risk baking in platform-specific binaries built
+# for the developer's machine rather than for linux/amd64.
+
+.git
+.gitattributes
+.github
+
+# .gitignore is deliberately kept: the asset stage needs it so Tailwind's
+# automatic source detection excludes vendor/ exactly as it does locally.
+.idea
+.vscode
+.claude
+
+node_modules
+vendor
+
+# Secrets never belong in an image. Configuration arrives as runtime env vars.
+.env
+.env.*
+!.env.example
+
+# Generated locally; the image builds its own.
+public/build
+public/hot
+public/storage
+
+# Runtime state, not build input.
+storage/app/public/*
+storage/framework/cache/*
+storage/framework/sessions/*
+storage/framework/testing/*
+storage/framework/views/*
+storage/logs/*
+bootstrap/cache/*
+
+# Development-only tooling and docs.
+tests
+phpunit.xml
+phpstan.neon
+pint.json
+compose.yaml
+docs
+
+# docker/app holds this image's own nginx, FPM and supervisor configuration, so
+# it has to stay in the context. Only the local-dev Postgres bootstrap is cut.
+docker/postgres
+CLAUDE.md
+boost.json
+README.md
+
+*.log
+*.cache
+.DS_Store
+Thumbs.db
