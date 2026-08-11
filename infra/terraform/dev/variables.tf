@@ -110,12 +110,24 @@ variable "app_desired_count" {
   description = <<-EOT
     Number of application tasks the service keeps running.
 
-    One is enough to prove the path works. Two would remove the brief gap during
-    a deployment, at twice the Fargate cost, which is not worth paying in an
-    environment with no users.
+    Zero by default, which is deliberate: Terraform stands the infrastructure up
+    but does not start the application.
+
+    This environment is rebuilt from empty state every session, so the database
+    is always empty when the service is created. A service that started a task
+    immediately would run it against a schema that does not exist yet, and the
+    task would answer /up/ready with a 503 until something migrated — or worse,
+    serve errors to anyone reaching it in between.
+
+    The deployment sequence instead runs migrations as a one-off task, waits for
+    it to succeed, and only then scales the service up with `aws ecs
+    update-service`. Ordering is expressed by the pipeline, which can wait for
+    an exit code, rather than by Terraform, which cannot.
+
+    Set above zero to run tasks directly from an apply, once a schema exists.
   EOT
   type        = number
-  default     = 1
+  default     = 0
 }
 
 variable "health_check_grace_period" {

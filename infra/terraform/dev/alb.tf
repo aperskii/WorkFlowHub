@@ -58,9 +58,17 @@ resource "aws_lb_target_group" "app" {
   # grace period below. Three failures marks it unhealthy after 45 seconds:
   # slow enough to ride out a single blip, fast enough that a broken deployment
   # is caught in under a minute.
+  # /up/ready, not /up. Laravel's /up answers "did the application boot" without
+  # touching the database, so a task pointed at an unreachable database reports
+  # healthy and then returns 500 to real users. /up/ready runs a query and fails
+  # when it cannot, which is the question a load balancer should be asking.
+  #
+  # The container-level health check in the task definition stays on /up on
+  # purpose: that one restarts the process, and restarting because PostgreSQL
+  # blipped would turn a brief outage into a longer one.
   health_check {
     enabled             = true
-    path                = "/up"
+    path                = "/up/ready"
     protocol            = "HTTP"
     matcher             = "200"
     interval            = 15
