@@ -1,0 +1,147 @@
+name: destroy
+
+# The counterpart to deploy. The dev environment bills by the hour — RDS and the
+# load balancer most of it — so tearing it down is a first-class operation
+# rather than something remembered at the end of a session.
+#
+# Manual only, and never on push: nothing about committing code should delete an
+# environment.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+# Shares a concurrency group with deploy, so a destroy cannot run while a
+# deployment is mid-flight. Queuing is right here too: cancelling a destroy
+# part-way leaves resources behind that nothing is tracking.
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: eu-central-1
+  AWS_ROLE: ${{ vars.AWS_DEPLOY_ROLE }}
+  CLUSTER: workflowhub-dev
+  SERVICE: workflowhub-dev-app
+
+jobs:
+  destroy:
+    name: Tear down the dev environment
+    runs-on: ubuntu-latest
+
+    # The same gate as deploy, and arguably more important: this one is
+    # irreversible. skip_final_snapshot is set on the database, so nothing is
+    # recoverable afterwards.
+    environment: aws-dev
+
+    # Teardown has taken between two and seven minutes. Thirty is generous
+    # enough for a slow RDS deletion without letting a wedged run sit forever.
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check the deployment role is configured
+        run: |
+          if [ -z "$AWS_ROLE" ]; then
+            echo "::error::Repository variable AWS_DEPLOY_ROLE is not set."
+            exit 1
+          fi
+          echo "role configured"
+
+      - name: Assume the deployment role
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
+        with:
+          role-to-assume: ${{ env.AWS_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: github-actions-destroy-${{ github.run_id }}
+
+      - name: Install Terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: 1.15.8
+          terraform_wrapper: false
+
+      # Scaling to zero first is not required — Terraform will delete the
+      # service regardless — but it stops tasks immediately rather than leaving
+      # them running through the rest of the teardown, and it removes them from
+      # the load balancer cleanly instead of mid-deletion.
+      #
+      # Tolerant of a missing service, so destroying an already-destroyed
+      # environment is not an error.
+      - name: Stop running tasks
+        timeout-minutes: 10
+        run: |
+          status="$(aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" \
+            --query 'services[0].status' --output text 2>/dev/null || echo NONE)"
+
+          if [ "$status" != "ACTIVE" ]; then
+            echo "service is '${status}'; nothing to scale down"
+            exit 0
+          fi
+
+          aws ecs update-service --cluster "$CLUSTER" --service "$SERVICE" \
+            --desired-count 0 --query 'service.desiredCount' --output text
+
+          aws ecs wait services-stable --cluster "$CLUSTER" --services "$SERVICE"
+          echo "tasks stopped"
+
+      - name: Show what will be destroyed
+        working-directory: infra/terraform/dev
+        timeout-minutes: 10
+        run: |
+          terraform init -input=false
+          terraform plan -destroy -input=false -no-color
+
+      - name: Destroy the environment
+        working-directory: infra/terraform/dev
+        timeout-minutes: 25
+        run: terraform destroy -input=false -auto-approve -no-color
+
+      # Terraform reporting success means its state is empty, which is not the
+      # same as the account being empty. This asks AWS directly, and covers the
+      # resources that survive a teardown and bill quietly.
+      - name: Verify nothing is left running
+        timeout-minutes: 5
+        run: |
+          fail=0
+          check() {
+            count="$(eval "$2" 2>/dev/null || echo ERROR)"
+            echo "  ${1}: ${count}"
+            [ "$count" = "0" ] || fail=1
+          }
+
+          check "RDS instances"    "aws rds describe-db-instances --query 'length(DBInstances)' --output text"
+          check "RDS snapshots"    "aws rds describe-db-snapshots --snapshot-type manual --query 'length(DBSnapshots)' --output text"
+          check "Load balancers"   "aws elbv2 describe-load-balancers --query 'length(LoadBalancers)' --output text"
+          check "Target groups"    "aws elbv2 describe-target-groups --query 'length(TargetGroups)' --output text"
+          check "ECS clusters"     "aws ecs list-clusters --query 'length(clusterArns)' --output text"
+          check "Non-default VPCs" "aws ec2 describe-vpcs --query 'length(Vpcs[?IsDefault==\`false\`])' --output text"
+          check "Secrets"          "aws secretsmanager list-secrets --include-planned-deletion --query 'length(SecretList)' --output text"
+          check "EBS volumes"      "aws ec2 describe-volumes --query 'length(Volumes)' --output text"
+          check "Elastic IPs"      "aws ec2 describe-addresses --query 'length(Addresses)' --output text"
+
+          if [ "$fail" -ne 0 ]; then
+            echo "::error::Resources remain after the destroy. Check the list above."
+            exit 1
+          fi
+
+          echo "nothing billable remains"
+
+      - name: Summary
+        if: success()
+        run: |
+          {
+            echo "### Environment destroyed"
+            echo
+            echo "Verified against AWS: no database, load balancer, cluster, VPC,"
+            echo "secrets, volumes, or addresses remain."
+            echo
+            echo "The registry, the OIDC provider and the state bucket are"
+            echo "unaffected. None of them bills by the hour."
+          } >> "$GITHUB_STEP_SUMMARY"

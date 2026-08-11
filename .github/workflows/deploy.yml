@@ -48,9 +48,18 @@ env:
 
 jobs:
   deploy:
-    name: Build, migrate, and release
+    name: Provision, build, migrate, and release
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+
+    # This workflow creates real, billable infrastructure. The environment
+    # carries a required reviewer, so the run pauses here until a human approves
+    # it — that approval is what used to be "show me the plan and wait".
+    environment: aws-dev
+
+    # An upper bound on the whole job. Provisioning takes about six minutes and
+    # the rest a further five, so this leaves generous headroom while ensuring a
+    # wedged run cannot sit burning minutes, and money, indefinitely.
+    timeout-minutes: 45
 
     steps:
       - name: Checkout code
@@ -80,10 +89,31 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
           role-session-name: github-actions-deploy-${{ github.run_id }}
 
-      # Terraform is run from a developer's machine and its state lives there,
-      # so this workflow deploys onto infrastructure that already exists rather
-      # than creating it. Checking first turns "the environment is not up" into
-      # one clear message instead of a confusing failure four steps later.
+      - name: Install Terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: 1.15.8
+          terraform_wrapper: false
+
+      # State lives in S3, so a runner can plan and apply the same environment a
+      # developer would. Before that it could not, and this workflow deployed
+      # onto infrastructure someone had created by hand.
+      #
+      # The plan is printed before applying. -auto-approve is not a shortcut
+      # past review: the review happened at the environment gate above, and
+      # there is no terminal here to answer a prompt. Keeping the plan in the
+      # log is what makes the change auditable after the fact.
+      - name: Provision infrastructure
+        working-directory: infra/terraform/dev
+        timeout-minutes: 25
+        run: |
+          terraform init -input=false
+          terraform plan -input=false -no-color
+          terraform apply -input=false -auto-approve -no-color
+
+      # Redundant if the apply succeeded, and cheap. It catches the case where
+      # Terraform reported success but produced something other than what the
+      # rest of this workflow addresses by name.
       - name: Check the environment exists
         run: |
           missing=0
@@ -109,7 +139,8 @@ jobs:
           fi
 
           if [ "$missing" -ne 0 ]; then
-            echo "::error::Run 'terraform apply' in infra/terraform/dev before deploying."
+            echo "::error::Terraform reported success but the expected resources are absent."
+            echo "::error::Check the provisioning step's plan output above."
             exit 1
           fi
 
@@ -132,6 +163,8 @@ jobs:
       # would be better still, but the image is fixed in Terraform, and changing
       # it here would show up as drift on the next plan.
       - name: Build and push the image
+        # A build plus two layer pushes. Ten minutes is roughly three times the observed duration.
+        timeout-minutes: 10
         run: |
           docker build -f docker/app/Dockerfile \
             -t "${IMAGE}:dev" \
@@ -174,6 +207,8 @@ jobs:
       # The gate. Migrations run to completion as a one-off task before anything
       # serves traffic, and a non-zero exit stops the deployment here.
       - name: Run database migrations
+        # aws ecs wait tasks-stopped polls for up to its own internal limit; this bounds it. Covers Fargate cold start plus the migration itself.
+        timeout-minutes: 15
         id: migrate
         run: |
           task_arn="$(aws ecs run-task \
@@ -222,6 +257,8 @@ jobs:
       # Only reached when migrations succeeded. force-new-deployment makes the
       # service pull :dev again rather than reuse the image it already has.
       - name: Release the new version
+        # aws ecs wait services-stable will poll for forty minutes before giving up on its own. A deployment that has not stabilised in fifteen is not going to.
+        timeout-minutes: 15
         run: |
           aws ecs update-service \
             --cluster "$CLUSTER" \
@@ -239,6 +276,8 @@ jobs:
       # queries the database, so this is the first point at which the deployment
       # is proven rather than assumed.
       - name: Wait for the load balancer to accept the task
+        # The loop is already bounded at forty checks, but a hung API call would not be. This is the step that hung for over twenty minutes earlier.
+        timeout-minutes: 8
         run: |
           tg="$(aws elbv2 describe-target-groups --names "$TARGET_GROUP" \
             --query 'TargetGroups[0].TargetGroupArn' --output text)"
@@ -267,6 +306,8 @@ jobs:
           exit 1
 
       - name: Smoke test through the load balancer
+        # Four curls with a twenty second cap each.
+        timeout-minutes: 5
         run: |
           dns="$(aws elbv2 describe-load-balancers --names "$LOAD_BALANCER" \
             --query 'LoadBalancers[0].DNSName' --output text)"
