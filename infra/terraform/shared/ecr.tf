@@ -53,6 +53,18 @@ resource "aws_ecr_repository" "app" {
   }
 }
 
+# Two rules, because the repository accumulates two different kinds of thing and
+# a single count-based rule handles neither well.
+#
+# A count over all images was the original approach and it measured the wrong
+# quantity. Every push leaves the manifest :dev used to point at behind as an
+# untagged image, and a local buildx push adds a provenance attestation as well,
+# so "keep the 6 most recent images" was mostly retaining debris rather than
+# builds. It also meant the number had to be guessed differently depending on
+# whether a human or the workflow had pushed.
+#
+# Splitting them makes the retained count mean builds, and lets the leftovers be
+# cleaned up on their own schedule.
 resource "aws_ecr_lifecycle_policy" "app" {
   repository = aws_ecr_repository.app.name
 
@@ -60,11 +72,27 @@ resource "aws_ecr_lifecycle_policy" "app" {
     rules = [
       {
         rulePriority = 1
-        description  = "Retain only the ${var.retained_image_count} most recent images"
+        description  = "Expire untagged leftovers after ${var.untagged_image_retention_days} day(s)"
         selection = {
-          tagStatus   = "any"
-          countType   = "imageCountMoreThan"
-          countNumber = var.retained_image_count
+          tagStatus   = "untagged"
+          countType   = "sinceImagePushed"
+          countUnit   = "days"
+          countNumber = var.untagged_image_retention_days
+        }
+        action = {
+          type = "expire"
+        }
+      },
+      {
+        # tagPatternList is required when tagStatus is "tagged"; "*" matches the
+        # moving :dev tag and the commit tags the workflow pushes alike.
+        rulePriority = 2
+        description  = "Retain the ${var.retained_image_count} most recent tagged builds"
+        selection = {
+          tagStatus      = "tagged"
+          tagPatternList = ["*"]
+          countType      = "imageCountMoreThan"
+          countNumber    = var.retained_image_count
         }
         action = {
           type = "expire"

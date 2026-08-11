@@ -62,22 +62,42 @@ variable "dev_resource_prefix" {
 
 variable "retained_image_count" {
   description = <<-EOT
-    Number of manifest entries the repository keeps before expiring the oldest.
+    Number of tagged builds the repository keeps.
 
-    This counts manifests, not builds. Buildx pushes three entries per build —
-    the tagged image, its manifest, and a provenance attestation — so retaining
-    two real builds needs six.
-
-    Two builds rather than one so the previous image survives long enough to
-    roll back to. Layers are stored compressed, roughly 67 MB per build against
-    the 311 MB on disk, so two builds occupy about 134 MB and stay inside the
-    500 MB free allowance.
+    Counts tagged images, so this is a count of real builds rather than of
+    manifests. Layers are stored compressed at roughly 67 MB per build and are
+    shared between builds, so five stays well inside the 500 MB free allowance
+    while leaving several versions to roll back to.
   EOT
   type        = number
-  default     = 6
+  default     = 5
 
   validation {
     condition     = var.retained_image_count >= 1
     error_message = "At least one image must be retained, or every push would expire immediately."
+  }
+}
+
+variable "untagged_image_retention_days" {
+  description = <<-EOT
+    How long an untagged image survives before being expired.
+
+    Untagged images are leftovers: a manifest that :dev used to point at before
+    the tag moved, or the provenance attestation a local buildx push creates
+    alongside the image itself. Nothing references them and nothing can pull
+    them, but they still occupy storage.
+
+    One day rather than zero because expiring an untagged manifest that a tagged
+    index still references would break that image. Images built by the
+    deployment workflow are single manifests with no children, so this cannot
+    arise for them; the delay is insurance against a hand-built push, which does
+    produce children.
+  EOT
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = var.untagged_image_retention_days >= 1
+    error_message = "Expiring untagged images immediately risks removing children of a manifest still in use."
   }
 }
