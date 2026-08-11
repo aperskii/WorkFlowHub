@@ -21,6 +21,23 @@ variable "github_repository" {
   default     = "aperskii/WorkFlowHub"
 }
 
+variable "github_environment" {
+  description = <<-EOT
+    The GitHub Environment a workflow must deploy to in order to assume the
+    role.
+
+    This is the approval gate. The environment carries a required reviewer, so a
+    run pauses until a person releases it, and the subject claim GitHub signs
+    names the environment — meaning a workflow that skips the gate cannot
+    authenticate at all.
+
+    Must match the `environment:` key in .github/workflows/deploy.yml and
+    destroy.yml.
+  EOT
+  type        = string
+  default     = "aws-dev"
+}
+
 variable "github_branch" {
   description = <<-EOT
     The only branch whose workflow runs may assume the deployment role.

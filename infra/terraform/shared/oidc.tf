@@ -33,13 +33,25 @@ resource "aws_iam_openid_connect_provider" "github" {
 }
 
 locals {
-  # GitHub sends the branch form of the subject claim for both push and
-  # workflow_dispatch triggers; the trigger event does not change it. It differs
-  # only when a job references an environment or the run is a pull request,
-  # neither of which applies here.
+  # The environment form of the subject claim, not the branch form.
+  #
+  # GitHub sends "repo:owner/name:ref:refs/heads/BRANCH" for an ordinary job,
+  # but a job that declares `environment:` gets
+  # "repo:owner/name:environment:NAME" instead. Both deployment workflows
+  # declare one, so the branch form would never match and the branch form is
+  # not trusted.
+  #
+  # That is deliberate rather than incidental. Trusting only the environment
+  # subject means the role can only be assumed by a run that has already passed
+  # the environment's required-reviewer gate: a workflow added later that
+  # reaches for AWS without that gate simply cannot authenticate. The approval
+  # becomes load-bearing instead of advisory.
+  #
+  # The branch is still constrained — the environment permits deployments from
+  # main only — so scoping is not lost by dropping the ref form.
   github_subjects = [
     for prefix in var.github_subject_prefixes :
-    "${prefix}:ref:refs/heads/${var.github_branch}"
+    "${prefix}:environment:${var.github_environment}"
   ]
 
   dev_prefix = var.dev_resource_prefix
