@@ -156,14 +156,34 @@ jobs:
           docker logs "$CONTAINER" || true
           exit 1
 
+      # nginx and php-fpm bind their sockets and answer requests immediately,
+      # but supervisord only reports RUNNING once startsecs has elapsed. /up
+      # therefore returns 200 while both are still STARTING, so this waits for
+      # supervisord to settle instead of sampling the moment the previous step
+      # succeeded.
+      #
+      # supervisorctl exits non-zero whenever a program is not RUNNING, hence
+      # the `|| true`: the assertion below decides, not the exit code.
       - name: Check both processes are supervised
         run: |
-          docker exec "$CONTAINER" supervisorctl \
-            -c /etc/supervisor/supervisord.conf status
-          docker exec "$CONTAINER" supervisorctl \
-            -c /etc/supervisor/supervisord.conf status php-fpm | grep -q RUNNING
-          docker exec "$CONTAINER" supervisorctl \
-            -c /etc/supervisor/supervisord.conf status nginx | grep -q RUNNING
+          for attempt in $(seq 1 30); do
+            status=$(docker exec "$CONTAINER" supervisorctl \
+              -c /etc/supervisor/supervisord.conf status || true)
+            if ! grep -q 'STARTING' <<<"$status"; then
+              echo "supervisord settled after ${attempt}s"
+              break
+            fi
+            sleep 1
+          done
+
+          echo "$status"
+
+          for program in php-fpm nginx; do
+            if ! grep -qE "^${program}[[:space:]]+RUNNING" <<<"$status"; then
+              echo "::error::${program} is not RUNNING"
+              exit 1
+            fi
+          done
 
       - name: Check the application serves a real page
         run: |
