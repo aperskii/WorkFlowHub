@@ -62,17 +62,17 @@ test('the dashboard lists recent projects with slug based links', function () {
         ->assertDontSee("/o/acme-agency/projects/{$project->id}", escape: false);
 });
 
-test('the dashboard shows at most five recent projects', function () {
+test('the dashboard shows at most six recent projects', function () {
     $organization = Organization::factory()->create();
     $owner = memberWithRole($organization, OrganizationRole::Owner);
 
-    Project::factory()->for($organization)->count(8)->create();
+    Project::factory()->for($organization)->count(9)->create();
 
     $component = Livewire::actingAs($owner)
         ->test('pages::organizations.dashboard', ['organization' => $organization]);
 
-    expect($component->instance()->recentProjects())->toHaveCount(5)
-        ->and($component->instance()->projectCount())->toBe(8);
+    expect($component->instance()->recentProjects())->toHaveCount(6)
+        ->and($component->instance()->projectCount())->toBe(9);
 });
 
 test('recent projects never include another organization\'s projects', function () {

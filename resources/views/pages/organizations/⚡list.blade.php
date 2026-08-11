@@ -79,25 +79,47 @@ new class extends Component {
             </x-slot:action>
         </x-empty-state>
     @else
-        <div class="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <x-stat-tile :label="__('Organizations')" :value="$this->memberships->count()" icon="building-office-2" />
-            <x-stat-tile :label="__('Owned by you')" :value="$this->ownedCount" icon="shield-check" />
+        <div class="mb-5 grid gap-3 sm:grid-cols-2 lg:max-w-md">
+            <x-metric-card
+                :label="__('Organizations')"
+                :value="$this->memberships->count()"
+                icon="building-office-2"
+            />
+
+            <x-metric-card
+                :label="__('Owned by you')"
+                :value="$this->ownedCount"
+                icon="shield-check"
+                :context="__('You can rename or delete these')"
+            />
         </div>
 
-        <flux:heading size="lg" class="mb-3">{{ __('Organizations') }}</flux:heading>
-
-        <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3" data-test="organization-list">
+        <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3" data-test="organization-list">
             @foreach ($this->memberships as $membership)
-                <flux:card :key="$membership->id" class="flex flex-col gap-4">
+                <a
+                    href="{{ route('organizations.dashboard', $membership->organization) }}"
+                    wire:navigate
+                    wire:key="org-{{ $membership->id }}"
+                    class="wfh-panel wfh-row group flex flex-col gap-3 p-4"
+                >
                     <div class="flex items-start justify-between gap-3">
-                        <div class="min-w-0 space-y-1">
-                            <flux:heading size="lg" class="truncate">
-                                {{ $membership->organization->name }}
-                            </flux:heading>
+                        <div class="flex min-w-0 items-center gap-2.5">
+                            <span
+                                class="flex size-8 shrink-0 items-center justify-center rounded-md bg-zinc-800 text-xs font-semibold text-white dark:bg-white dark:text-zinc-900"
+                                aria-hidden="true"
+                            >
+                                {{ str($membership->organization->name)->substr(0, 1)->upper() }}
+                            </span>
 
-                            <flux:text class="truncate font-mono text-xs">
-                                /o/{{ $membership->organization->slug }}
-                            </flux:text>
+                            <div class="min-w-0">
+                                <p class="truncate text-sm font-medium text-zinc-900 dark:text-white">
+                                    {{ $membership->organization->name }}
+                                </p>
+
+                                <p class="truncate font-mono text-xs text-zinc-500 dark:text-zinc-400">
+                                    /o/{{ $membership->organization->slug }}
+                                </p>
+                            </div>
                         </div>
 
                         <flux:badge size="sm" inset="top bottom" :color="$membership->role->color()">
@@ -105,33 +127,18 @@ new class extends Component {
                         </flux:badge>
                     </div>
 
-                    <flux:separator variant="subtle" />
-
-                    <div class="flex items-center gap-4">
-                        <flux:text class="flex items-center gap-1.5 text-xs">
-                            <flux:icon icon="users" variant="outline" class="size-4" />
+                    <div class="mt-auto flex items-center justify-between gap-3 border-t border-zinc-200 pt-3 text-xs text-zinc-500 dark:border-white/10 dark:text-zinc-400">
+                        <span class="flex items-center gap-1.5">
+                            <flux:icon icon="users" variant="outline" class="size-3.5" />
                             {{ trans_choice('{1} :count member|[2,*] :count members', $membership->organization->memberships_count, ['count' => $membership->organization->memberships_count]) }}
-                        </flux:text>
+                        </span>
 
-                        <flux:text class="flex items-center gap-1.5 text-xs">
-                            <flux:icon icon="calendar-days" variant="outline" class="size-4" />
-                            {{ __('Joined :date', ['date' => $membership->created_at->toFormattedDateString()]) }}
-                        </flux:text>
+                        <span class="flex items-center gap-1 font-medium text-zinc-600 group-hover:text-zinc-900 dark:text-zinc-300 dark:group-hover:text-white">
+                            {{ __('Open') }}
+                            <flux:icon icon="arrow-right" variant="outline" class="size-3.5" />
+                        </span>
                     </div>
-
-                    <flux:spacer />
-
-                    <flux:button
-                        :href="route('organizations.dashboard', $membership->organization)"
-                        variant="filled"
-                        size="sm"
-                        icon-trailing="arrow-right"
-                        wire:navigate
-                        class="w-full"
-                    >
-                        {{ __('Open') }}
-                    </flux:button>
-                </flux:card>
+                </a>
             @endforeach
         </div>
     @endif

@@ -9,10 +9,14 @@
 --}}
 @can('changeStatus', $task)
     <flux:dropdown position="bottom" align="start">
+        {{-- Disabled while this row's own status change is in flight, so the menu
+             cannot be reopened and fired a second time. --}}
         <flux:button
             size="sm"
             variant="ghost"
             icon-trailing="chevron-down"
+            wire:loading.attr="disabled"
+            :wire:target="'changeStatus('.$task->id.')'"
             :data-test="'change-task-status-'.$task->id"
         >
             {{ $task->status->label() }}

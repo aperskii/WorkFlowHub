@@ -344,11 +344,13 @@ new #[Title('Organization members')] class extends Component {
     :heading="__('Members')"
     :subheading="__('People who belong to this organization')"
 >
-    <x-slot:actions>
+    <x-slot:meta>
         <flux:badge size="sm" inset="top bottom" icon="users">
             {{ trans_choice('{1} :count member|[2,*] :count members', $this->memberships->count(), ['count' => $this->memberships->count()]) }}
         </flux:badge>
+    </x-slot:meta>
 
+    <x-slot:actions>
         @can('create', [App\Models\Invitation::class, $organization])
             <flux:modal.trigger name="invite-member">
                 <flux:button variant="primary" size="sm" icon="user-plus" data-test="invite-member-button">
@@ -365,118 +367,70 @@ new #[Title('Organization members')] class extends Component {
         </flux:callout>
     @enderror
 
-    {{-- Five columns including an email address do not fit a phone, so narrow
-         widths get cards instead. --}}
-    <div class="hidden sm:block">
-        <flux:table>
-            <flux:table.columns>
-                <flux:table.column>{{ __('Name') }}</flux:table.column>
-                <flux:table.column>{{ __('Email') }}</flux:table.column>
-                <flux:table.column>{{ __('Role') }}</flux:table.column>
-                <flux:table.column>{{ __('Joined') }}</flux:table.column>
-                <flux:table.column></flux:table.column>
-            </flux:table.columns>
-
-            <flux:table.rows>
-                @foreach ($this->memberships as $membership)
-                    <flux:table.row :key="$membership->id">
-                        <flux:table.cell>
-                            <div class="flex items-center gap-3">
-                                <flux:avatar
-                                    size="xs"
-                                    :name="$membership->user->name"
-                                    :initials="$membership->user->initials()"
-                                />
-
-                                <span class="truncate font-medium">{{ $membership->user->name }}</span>
-                            </div>
-                        </flux:table.cell>
-
-                        <flux:table.cell class="text-zinc-500 dark:text-zinc-400">
-                            {{ $membership->user->email }}
-                        </flux:table.cell>
-
-                        <flux:table.cell>
-                            <x-member-role-control
-                                :membership="$membership"
-                                :assignable-roles="$this->assignableRoles"
-                            />
-                        </flux:table.cell>
-
-                        <flux:table.cell class="whitespace-nowrap text-zinc-500 dark:text-zinc-400">
-                            {{ $membership->created_at->toFormattedDateString() }}
-                        </flux:table.cell>
-
-                        <flux:table.cell align="end">
-                            @can('delete', $membership)
-                                <flux:button
-                                    size="sm"
-                                    variant="subtle"
-                                    icon="trash"
-                                    wire:click="confirmRemoval({{ $membership->id }})"
-                                    :data-test="'remove-member-'.$membership->id"
-                                >
-                                    {{ __('Remove') }}
-                                </flux:button>
-                            @endcan
-                        </flux:table.cell>
-                    </flux:table.row>
-                @endforeach
-            </flux:table.rows>
-        </flux:table>
-    </div>
-
-    <div class="space-y-3 sm:hidden" data-test="member-card-list">
-        @foreach ($this->memberships as $membership)
-            <flux:card :key="'card-'.$membership->id" class="space-y-3">
-                <div class="flex items-start gap-3">
-                    <flux:avatar
-                        size="sm"
-                        :name="$membership->user->name"
-                        :initials="$membership->user->initials()"
-                    />
-
-                    <div class="min-w-0 flex-1">
-                        <flux:text class="truncate font-medium">{{ $membership->user->name }}</flux:text>
-                        <flux:text class="truncate text-xs">{{ $membership->user->email }}</flux:text>
-                    </div>
-                </div>
-
-                <flux:separator variant="subtle" />
-
-                <div class="flex items-center justify-between gap-3">
-                    <x-member-role-control
-                        :membership="$membership"
-                        :assignable-roles="$this->assignableRoles"
-                    />
-
-                    @can('delete', $membership)
-                        <flux:button
+    {{-- One list at every width: the email wraps under the name instead of
+         forcing a fifth column that no phone can show. --}}
+    <x-panel flush :title="__('Team')" :description="__('Everyone with access to this organization')" data-test="member-card-list">
+        <ul class="divide-y divide-zinc-200 dark:divide-white/10">
+            @foreach ($this->memberships as $membership)
+                <li class="wfh-row flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:gap-4" wire:key="member-{{ $membership->id }}">
+                    <div class="flex min-w-0 flex-1 items-center gap-3">
+                        <flux:avatar
                             size="sm"
-                            variant="subtle"
-                            icon="trash"
-                            wire:click="confirmRemoval({{ $membership->id }})"
-                            :data-test="'remove-member-'.$membership->id"
-                        >
-                            {{ __('Remove') }}
-                        </flux:button>
-                    @endcan
-                </div>
-            </flux:card>
-        @endforeach
-    </div>
+                            :name="$membership->user->name"
+                            :initials="$membership->user->initials()"
+                        />
+
+                        <div class="min-w-0">
+                            <p class="truncate text-sm font-medium text-zinc-900 dark:text-white">
+                                {{ $membership->user->name }}
+                            </p>
+
+                            <p class="truncate text-xs text-zinc-500 dark:text-zinc-400">
+                                {{ $membership->user->email }}
+                            </p>
+                        </div>
+                    </div>
+
+                    <span class="tabular hidden shrink-0 text-xs whitespace-nowrap text-zinc-500 lg:block dark:text-zinc-400">
+                        {{ __('Joined :date', ['date' => $membership->created_at->format('M j, Y')]) }}
+                    </span>
+
+                    <div class="flex shrink-0 items-center justify-between gap-2 sm:justify-end">
+                        <x-member-role-control
+                            :membership="$membership"
+                            :assignable-roles="$this->assignableRoles"
+                        />
+
+                        @can('delete', $membership)
+                            <flux:button
+                                size="sm"
+                                variant="subtle"
+                                icon="trash"
+                                wire:click="confirmRemoval({{ $membership->id }})"
+                                :aria-label="__('Remove :name', ['name' => $membership->user->name])"
+                                :data-test="'remove-member-'.$membership->id"
+                            >
+                                {{ __('Remove') }}
+                            </flux:button>
+                        @endcan
+                    </div>
+                </li>
+            @endforeach
+        </ul>
+    </x-panel>
 
     @can('viewAny', [App\Models\Invitation::class, $organization])
-        <div class="mt-10" data-test="pending-invitations">
-            <div class="mb-4 flex items-center justify-between gap-3">
-                <div class="space-y-1">
-                    <flux:heading size="lg">{{ __('Pending invitations') }}</flux:heading>
-                    <flux:subheading>{{ __('People who have been invited but have not joined yet') }}</flux:subheading>
-                </div>
-            </div>
-
+        {{-- Invitations are deliberately quieter than members: dashed edges and a
+             muted ground mark them as not-yet-real people. --}}
+        <x-panel
+            flush
+            class="mt-5 border-dashed bg-zinc-50/60 dark:bg-white/[0.02]"
+            :title="__('Pending invitations')"
+            :description="__('People who have been invited but have not joined yet')"
+            data-test="pending-invitations"
+        >
             @error('invitations')
-                <flux:callout variant="danger" icon="exclamation-triangle" class="mb-4" data-test="invitations-error">
+                <flux:callout variant="danger" icon="exclamation-triangle" class="m-4" data-test="invitations-error">
                     <flux:callout.text>{{ $message }}</flux:callout.text>
                 </flux:callout>
             @enderror
@@ -499,73 +453,74 @@ new #[Title('Organization members')] class extends Component {
                     @endcan
                 </x-empty-state>
             @else
-                <flux:table>
-                    <flux:table.columns>
-                        <flux:table.column>{{ __('Email') }}</flux:table.column>
-                        <flux:table.column>{{ __('Role') }}</flux:table.column>
-                        <flux:table.column>{{ __('Status') }}</flux:table.column>
-                        <flux:table.column>{{ __('Invited by') }}</flux:table.column>
-                        <flux:table.column>{{ __('Expires') }}</flux:table.column>
-                        <flux:table.column></flux:table.column>
-                    </flux:table.columns>
+                <ul class="divide-y divide-zinc-200 dark:divide-white/10">
+                    @foreach ($this->invitations as $invitation)
+                        <li class="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:gap-4" wire:key="invitation-{{ $invitation->id }}">
+                            <div class="flex min-w-0 flex-1 items-center gap-3">
+                                <span
+                                    class="flex size-8 shrink-0 items-center justify-center rounded-full border border-dashed border-zinc-300 text-zinc-400 dark:border-white/20"
+                                    aria-hidden="true"
+                                >
+                                    <flux:icon icon="envelope" variant="outline" class="size-4" />
+                                </span>
 
-                    <flux:table.rows>
-                        @foreach ($this->invitations as $invitation)
-                            <flux:table.row :key="$invitation->id">
-                                <flux:table.cell class="font-medium">{{ $invitation->email }}</flux:table.cell>
+                                <div class="min-w-0">
+                                    <p class="truncate text-sm font-medium text-zinc-900 dark:text-white">
+                                        {{ $invitation->email }}
+                                    </p>
 
-                                <flux:table.cell>
-                                    <flux:badge size="sm" inset="top bottom">{{ $invitation->role->label() }}</flux:badge>
-                                </flux:table.cell>
+                                    <p class="truncate text-xs text-zinc-500 dark:text-zinc-400">
+                                        {{ __('Invited by :name · expires :date', [
+                                            'name' => $invitation->invitedBy?->name ?? __('Unknown'),
+                                            'date' => $invitation->expires_at->format('M j, Y'),
+                                        ]) }}
+                                    </p>
+                                </div>
+                            </div>
 
-                                <flux:table.cell>
-                                    <flux:badge
-                                        size="sm"
-                                        inset="top bottom"
-                                        :color="$invitation->status()->color()"
-                                        :data-test="'invitation-status-'.$invitation->id"
-                                    >
-                                        {{ $invitation->status()->label() }}
-                                    </flux:badge>
-                                </flux:table.cell>
+                            <div class="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
+                                <flux:badge size="sm" inset="top bottom" :color="$invitation->role->color()">
+                                    {{ $invitation->role->label() }}
+                                </flux:badge>
 
-                                <flux:table.cell class="text-zinc-500 dark:text-zinc-400">
-                                    {{ $invitation->invitedBy?->name ?? __('Unknown') }}
-                                </flux:table.cell>
+                                <flux:badge
+                                    size="sm"
+                                    inset="top bottom"
+                                    :color="$invitation->status()->color()"
+                                    :data-test="'invitation-status-'.$invitation->id"
+                                >
+                                    {{ $invitation->status()->label() }}
+                                </flux:badge>
 
-                                <flux:table.cell class="whitespace-nowrap text-zinc-500 dark:text-zinc-400">
-                                    {{ $invitation->expires_at->toFormattedDateString() }}
-                                </flux:table.cell>
+                                <flux:button
+                                    size="sm"
+                                    variant="subtle"
+                                    icon="arrow-path"
+                                    wire:click="resendInvitation({{ $invitation->id }})"
+                                    wire:loading.attr="disabled"
+                                    wire:target="resendInvitation({{ $invitation->id }})"
+                                    :aria-label="__('Resend invitation to :email', ['email' => $invitation->email])"
+                                    :data-test="'resend-invitation-'.$invitation->id"
+                                >
+                                    {{ __('Resend') }}
+                                </flux:button>
 
-                                <flux:table.cell align="end">
-                                    <div class="flex items-center justify-end gap-2">
-                                        <flux:button
-                                            size="sm"
-                                            variant="subtle"
-                                            icon="arrow-path"
-                                            wire:click="resendInvitation({{ $invitation->id }})"
-                                            :data-test="'resend-invitation-'.$invitation->id"
-                                        >
-                                            {{ __('Resend') }}
-                                        </flux:button>
-
-                                        <flux:button
-                                            size="sm"
-                                            variant="subtle"
-                                            icon="x-circle"
-                                            wire:click="confirmRevoke({{ $invitation->id }})"
-                                            :data-test="'revoke-invitation-'.$invitation->id"
-                                        >
-                                            {{ __('Revoke') }}
-                                        </flux:button>
-                                    </div>
-                                </flux:table.cell>
-                            </flux:table.row>
-                        @endforeach
-                    </flux:table.rows>
-                </flux:table>
+                                <flux:button
+                                    size="sm"
+                                    variant="subtle"
+                                    icon="x-circle"
+                                    wire:click="confirmRevoke({{ $invitation->id }})"
+                                    :aria-label="__('Revoke invitation to :email', ['email' => $invitation->email])"
+                                    :data-test="'revoke-invitation-'.$invitation->id"
+                                >
+                                    {{ __('Revoke') }}
+                                </flux:button>
+                            </div>
+                        </li>
+                    @endforeach
+                </ul>
             @endif
-        </div>
+        </x-panel>
 
         <flux:modal name="invite-member" class="max-w-lg">
             <form wire:submit="sendInvitation" class="space-y-6">
@@ -601,7 +556,13 @@ new #[Title('Organization members')] class extends Component {
                         <flux:button variant="filled" type="button">{{ __('Cancel') }}</flux:button>
                     </flux:modal.close>
 
-                    <flux:button variant="primary" type="submit" data-test="send-invitation-button">
+                    <flux:button
+                        variant="primary"
+                        type="submit"
+                        wire:loading.attr="disabled"
+                        wire:target="sendInvitation"
+                        data-test="send-invitation-button"
+                    >
                         {{ __('Send invitation') }}
                     </flux:button>
                 </div>
@@ -623,7 +584,13 @@ new #[Title('Organization members')] class extends Component {
                 <div class="flex justify-end gap-2">
                     <flux:button variant="filled" wire:click="cancelRevoke">{{ __('Cancel') }}</flux:button>
 
-                    <flux:button variant="danger" wire:click="revokeInvitation" data-test="confirm-revoke-invitation-button">
+                    <flux:button
+                        variant="danger"
+                        wire:click="revokeInvitation"
+                        wire:loading.attr="disabled"
+                        wire:target="revokeInvitation"
+                        data-test="confirm-revoke-invitation-button"
+                    >
                         {{ __('Revoke invitation') }}
                     </flux:button>
                 </div>
@@ -648,7 +615,13 @@ new #[Title('Organization members')] class extends Component {
                     {{ __('Cancel') }}
                 </flux:button>
 
-                <flux:button variant="danger" wire:click="removeMember" data-test="confirm-remove-member-button">
+                <flux:button
+                    variant="danger"
+                    wire:click="removeMember"
+                    wire:loading.attr="disabled"
+                    wire:target="removeMember"
+                    data-test="confirm-remove-member-button"
+                >
                     {{ __('Remove member') }}
                 </flux:button>
             </div>

@@ -7,6 +7,16 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+/*
+|--------------------------------------------------------------------------
+| WorkFlowHub visual language
+|--------------------------------------------------------------------------
+|
+| Neutral-first. The interface is built almost entirely from a warm zinc
+| scale so that colour always means something: indigo is interactive, and
+| lime / amber / red / sky are reserved for status and priority.
+|
+*/
 @theme {
     --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
 
@@ -22,16 +32,30 @@
     --color-zinc-900: #171717;
     --color-zinc-950: #0a0a0a;
 
-    --color-accent: var(--color-neutral-800);
-    --color-accent-content: var(--color-neutral-800);
+    /* Interactive accent. Used for primary actions, links, and focus only. */
+    --color-accent: var(--color-indigo-600);
+    --color-accent-content: var(--color-indigo-700);
     --color-accent-foreground: var(--color-white);
+
+    /*
+    | Application chrome. These flip with the theme on their own, so chrome is
+    | written once as bg-canvas / bg-surface / border-hairline rather than as a
+    | light value plus a dark: override at every call site.
+    */
+    --color-canvas: var(--color-zinc-50);
+    --color-surface: #ffffff;
+    --color-hairline: var(--color-zinc-200);
 }
 
 @layer theme {
     .dark {
-        --color-accent: var(--color-white);
-        --color-accent-content: var(--color-white);
-        --color-accent-foreground: var(--color-neutral-800);
+        --color-accent: var(--color-indigo-400);
+        --color-accent-content: var(--color-indigo-300);
+        --color-accent-foreground: var(--color-zinc-950);
+
+        --color-canvas: var(--color-zinc-950);
+        --color-surface: var(--color-zinc-900);
+        --color-hairline: color-mix(in oklab, var(--color-white), transparent 90%);
     }
 }
 
@@ -44,6 +68,11 @@
     ::file-selector-button {
         border-color: var(--color-gray-200, currentColor);
     }
+
+    /* Numeric columns and metrics must not jitter as values change. */
+    .tabular {
+        font-variant-numeric: tabular-nums;
+    }
 }
 
 [data-flux-field]:not(ui-radio, ui-checkbox) {
@@ -54,12 +83,28 @@
     @apply  !mb-0 !leading-tight;
 }
 
+/*
+| A single visible focus treatment for every control, including keyboard
+| navigation through links, buttons, and menu items.
+*/
 input:focus[data-flux-control],
 textarea:focus[data-flux-control],
 select:focus[data-flux-control] {
-    @apply outline-hidden ring-2 ring-accent ring-offset-2 ring-offset-accent-foreground;
+    @apply outline-hidden ring-2 ring-accent/60 border-accent;
 }
 
-/* \[:where(&)\]:size-4 {
-    @apply size-4;
-} */
+:where(a, button, [role='button'], summary):focus-visible {
+    @apply outline-2 outline-offset-2 outline-accent;
+}
+
+/*
+| Section surfaces. Applied through the x-panel component rather than sprinkled
+| across templates, so the chrome stays consistent.
+*/
+.wfh-panel {
+    @apply rounded-lg border border-hairline bg-surface;
+}
+
+.wfh-row {
+    @apply transition-colors duration-100 hover:bg-zinc-50 dark:hover:bg-white/[0.03];
+}

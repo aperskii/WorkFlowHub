@@ -3,17 +3,25 @@
     'description' => null,
 ])
 
-<div class="mb-6 w-full space-y-4">
+<div class="mb-6 w-full space-y-3">
     @isset($breadcrumbs)
         <div class="min-w-0">{{ $breadcrumbs }}</div>
     @endisset
 
-    <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
         <div class="min-w-0 space-y-1">
-            <flux:heading size="xl" level="1" class="truncate">{{ $title }}</flux:heading>
+            <div class="flex flex-wrap items-center gap-2">
+                <h1 class="truncate text-xl font-semibold tracking-tight text-zinc-900 sm:text-2xl dark:text-white">
+                    {{ $title }}
+                </h1>
+
+                @isset($meta)
+                    {{ $meta }}
+                @endisset
+            </div>
 
             @if (filled($description))
-                <flux:subheading>{{ $description }}</flux:subheading>
+                <p class="text-sm text-zinc-500 dark:text-zinc-400">{{ $description }}</p>
             @endif
         </div>
 
@@ -21,6 +29,4 @@
             <div class="flex shrink-0 flex-wrap items-center gap-2">{{ $actions }}</div>
         @endisset
     </div>
-
-    <flux:separator variant="subtle" />
 </div>

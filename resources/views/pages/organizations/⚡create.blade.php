@@ -26,7 +26,7 @@ new #[Title('Create organization')] class extends Component {
 <div class="w-full">
     <x-page-header
         :title="__('Create organization')"
-        :description="__('An organization holds your projects, clients, and team members')"
+        :description="__('An organization holds your projects, tasks, and team members')"
     >
         <x-slot:breadcrumbs>
             <flux:breadcrumbs>
@@ -39,10 +39,10 @@ new #[Title('Create organization')] class extends Component {
         </x-slot:breadcrumbs>
     </x-page-header>
 
-    <div class="grid gap-6 lg:grid-cols-3">
+    <div class="grid gap-5 lg:grid-cols-3">
         <div class="lg:col-span-2">
-            <flux:card class="space-y-6">
-                <form wire:submit="createOrganization" class="space-y-6">
+            <x-panel :title="__('Details')" :description="__('You can rename the organization later')">
+                <form wire:submit="createOrganization" class="space-y-5">
                     <flux:input
                         wire:model="name"
                         :label="__('Organization name')"
@@ -54,40 +54,43 @@ new #[Title('Create organization')] class extends Component {
                         autocomplete="organization"
                     />
 
-                    <div class="flex items-center gap-3">
-                        <flux:button variant="primary" type="submit" data-test="create-organization-button">
+                    <div class="flex items-center gap-2">
+                        <flux:button
+                            variant="primary"
+                            size="sm"
+                            type="submit"
+                            wire:loading.attr="disabled"
+                            wire:target="createOrganization"
+                            data-test="create-organization-button"
+                        >
                             {{ __('Create organization') }}
                         </flux:button>
 
-                        <flux:button :href="route('dashboard')" variant="ghost" wire:navigate>
+                        <flux:button :href="route('dashboard')" variant="ghost" size="sm" wire:navigate>
                             {{ __('Cancel') }}
                         </flux:button>
                     </div>
                 </form>
-            </flux:card>
+            </x-panel>
         </div>
 
-        <flux:card class="space-y-3 self-start">
-            <flux:heading size="lg">{{ __('What happens next') }}</flux:heading>
-
-            <flux:separator variant="subtle" />
-
-            <ul class="space-y-3">
+        <x-panel :title="__('What happens next')" class="self-start">
+            <ul class="space-y-3 text-sm text-zinc-600 dark:text-zinc-300">
                 <li class="flex items-start gap-2">
-                    <flux:icon icon="shield-check" variant="outline" class="mt-0.5 size-4 shrink-0 text-zinc-400" />
-                    <flux:text class="text-sm">{{ __('You become the organization owner.') }}</flux:text>
+                    <flux:icon icon="shield-check" variant="outline" class="mt-0.5 size-4 shrink-0 text-zinc-400 dark:text-zinc-500" />
+                    {{ __('You become the organization owner.') }}
                 </li>
 
                 <li class="flex items-start gap-2">
-                    <flux:icon icon="users" variant="outline" class="mt-0.5 size-4 shrink-0 text-zinc-400" />
-                    <flux:text class="text-sm">{{ __('You can add members and assign roles.') }}</flux:text>
+                    <flux:icon icon="users" variant="outline" class="mt-0.5 size-4 shrink-0 text-zinc-400 dark:text-zinc-500" />
+                    {{ __('You can add members and assign roles.') }}
                 </li>
 
                 <li class="flex items-start gap-2">
-                    <flux:icon icon="building-office-2" variant="outline" class="mt-0.5 size-4 shrink-0 text-zinc-400" />
-                    <flux:text class="text-sm">{{ __('You can belong to as many organizations as you need.') }}</flux:text>
+                    <flux:icon icon="building-office-2" variant="outline" class="mt-0.5 size-4 shrink-0 text-zinc-400 dark:text-zinc-500" />
+                    {{ __('You can belong to as many organizations as you need.') }}
                 </li>
             </ul>
-        </flux:card>
+        </x-panel>
     </div>
 </div>

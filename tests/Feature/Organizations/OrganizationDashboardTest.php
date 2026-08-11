@@ -108,20 +108,52 @@ test('the overdue metric counts only open work past its due date', function () {
     expect(dashboardAs($owner, $organization)->instance()->overdueTaskCount())->toBe(3);
 });
 
-test('the needs attention panel appears only when there is something to act on', function () {
+test('the needs attention panel is always available to a manager', function () {
+    $organization = Organization::factory()->create();
+    $owner = memberWithRole($organization, OrganizationRole::Owner);
+
+    dashboardAs($owner, $organization)
+        ->assertSee('data-test="needs-attention"', escape: false)
+        ->assertSee('Needs attention')
+        ->assertSee('No tasks need your attention');
+});
+
+test('needs attention covers late, imminent, and unowned work', function () {
     $organization = Organization::factory()->create();
     $owner = memberWithRole($organization, OrganizationRole::Owner);
     $project = Project::factory()->for($organization)->create();
 
-    Task::factory()->for($project)->todo()->dueOn(today()->addWeek()->toDateString())->assignedTo($owner)->create();
+    Task::factory()->for($project)->todo()->assignedTo($owner)
+        ->dueOn(today()->subDay()->toDateString())->create(['title' => 'Already late']);
 
-    dashboardAs($owner, $organization)->assertDontSee('data-test="needs-attention"', escape: false);
+    Task::factory()->for($project)->todo()->assignedTo($owner)
+        ->dueOn(today()->addDays(2)->toDateString())->create(['title' => 'Falling due']);
 
-    Task::factory()->for($project)->todo()->dueOn(today()->subDay()->toDateString())->assignedTo($owner)->create();
+    Task::factory()->for($project)->todo()
+        ->create(['title' => 'Nobody owns this', 'assigned_to_user_id' => null]);
 
     dashboardAs($owner, $organization)
-        ->assertSee('data-test="needs-attention"', escape: false)
-        ->assertSee('Needs attention');
+        ->assertSee('Already late')
+        ->assertSee('Falling due')
+        ->assertSee('Nobody owns this');
+});
+
+test('needs attention leaves alone work that is owned, dated far out, and open', function () {
+    $organization = Organization::factory()->create();
+    $owner = memberWithRole($organization, OrganizationRole::Owner);
+    $project = Project::factory()->for($organization)->create();
+
+    Task::factory()->for($project)->todo()->assignedTo($owner)
+        ->dueOn(today()->addMonth()->toDateString())->create(['title' => 'Plenty of time']);
+
+    Task::factory()->for($project)->done()->assignedTo($owner)
+        ->dueOn(today()->subMonth()->toDateString())->create(['title' => 'Late but finished']);
+
+    $component = dashboardAs($owner, $organization);
+
+    expect($component->instance()->attentionCount())->toBe(0);
+
+    $component->assertSee('No tasks need your attention');
 });
 
 test('unassigned open work is surfaced to managers', function () {
@@ -262,7 +294,9 @@ test('every dashboard figure ignores another organization', function () {
         ->and($dashboard->myOpenTaskCount())->toBe(1)
         ->and($dashboard->myOverdueTaskCount())->toBe(0)
         ->and($dashboard->myTasks())->toHaveCount(1)
-        ->and($dashboard->overdueTasks())->toHaveCount(0);
+        ->and($dashboard->dueSoonTaskCount())->toBe(0)
+        ->and($dashboard->attentionCount())->toBe(0)
+        ->and($dashboard->attentionTasks())->toHaveCount(0);
 });
 
 test('another tenant\'s task titles never reach the dashboard', function () {

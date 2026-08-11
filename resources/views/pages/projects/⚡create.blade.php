@@ -67,10 +67,10 @@ new #[Title('New project')] class extends Component {
     :parent-label="__('Projects')"
     :parent-href="route('organizations.projects.index', $organization)"
 >
-    <div class="grid gap-6 lg:grid-cols-3">
+    <div class="grid gap-5 lg:grid-cols-3">
         <div class="lg:col-span-2">
-            <flux:card class="space-y-6">
-                <form wire:submit="createProject" class="space-y-6">
+            <x-panel :title="__('Details')" :description="__('You can rename the project or change its status later')">
+                <form wire:submit="createProject" class="space-y-5">
                     <flux:input
                         wire:model="name"
                         :label="__('Project name')"
@@ -94,50 +94,48 @@ new #[Title('New project')] class extends Component {
                         @endforeach
                     </flux:select>
 
-                    <div class="flex items-center gap-3">
-                        <flux:button variant="primary" type="submit" data-test="create-project-button">
+                    <div class="flex items-center gap-2">
+                        <flux:button
+                            variant="primary"
+                            size="sm"
+                            type="submit"
+                            wire:loading.attr="disabled"
+                            wire:target="createProject"
+                            data-test="create-project-button"
+                        >
                             {{ __('Create project') }}
                         </flux:button>
 
                         <flux:button
                             :href="route('organizations.projects.index', $organization)"
                             variant="ghost"
+                            size="sm"
                             wire:navigate
                         >
                             {{ __('Cancel') }}
                         </flux:button>
                     </div>
                 </form>
-            </flux:card>
+            </x-panel>
         </div>
 
-        <flux:card class="space-y-3 self-start">
-            <flux:heading size="lg">{{ __('What happens next') }}</flux:heading>
-
-            <flux:separator variant="subtle" />
-
-            <ul class="space-y-3">
+        <x-panel :title="__('What happens next')" class="self-start">
+            <ul class="space-y-3 text-sm text-zinc-600 dark:text-zinc-300">
                 <li class="flex items-start gap-2">
-                    <flux:icon icon="folder" variant="outline" class="mt-0.5 size-4 shrink-0 text-zinc-400" />
-                    <flux:text class="text-sm">
-                        {{ __('The project belongs to :name.', ['name' => $organization->name]) }}
-                    </flux:text>
+                    <flux:icon icon="folder" variant="outline" class="mt-0.5 size-4 shrink-0 text-zinc-400 dark:text-zinc-500" />
+                    {{ __('The project belongs to :name.', ['name' => $organization->name]) }}
                 </li>
 
                 <li class="flex items-start gap-2">
-                    <flux:icon icon="users" variant="outline" class="mt-0.5 size-4 shrink-0 text-zinc-400" />
-                    <flux:text class="text-sm">
-                        {{ __('Everyone in this organization can see it.') }}
-                    </flux:text>
+                    <flux:icon icon="users" variant="outline" class="mt-0.5 size-4 shrink-0 text-zinc-400 dark:text-zinc-500" />
+                    {{ __('Everyone in this organization can see it.') }}
                 </li>
 
                 <li class="flex items-start gap-2">
-                    <flux:icon icon="arrow-path" variant="outline" class="mt-0.5 size-4 shrink-0 text-zinc-400" />
-                    <flux:text class="text-sm">
-                        {{ __('You can rename it or change its status at any time.') }}
-                    </flux:text>
+                    <flux:icon icon="arrow-path" variant="outline" class="mt-0.5 size-4 shrink-0 text-zinc-400 dark:text-zinc-500" />
+                    {{ __('You can rename it or change its status at any time.') }}
                 </li>
             </ul>
-        </flux:card>
+        </x-panel>
     </div>
 </x-pages::organizations.layout>

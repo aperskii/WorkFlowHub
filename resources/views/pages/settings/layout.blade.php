@@ -33,17 +33,10 @@
     <flux:separator class="md:hidden" />
 
     <div class="min-w-0 flex-1 self-stretch max-md:pt-6">
-        <flux:card class="space-y-6">
-            <div class="space-y-1">
-                <flux:heading size="lg">{{ $heading ?? '' }}</flux:heading>
-                <flux:subheading>{{ $subheading ?? '' }}</flux:subheading>
-            </div>
-
-            <flux:separator variant="subtle" />
-
+        <x-panel :title="$heading ?? ''" :description="$subheading ?? ''">
             <div class="w-full max-w-lg">
                 {{ $slot }}
             </div>
-        </flux:card>
+        </x-panel>
     </div>
 </div>

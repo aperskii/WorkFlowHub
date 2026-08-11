@@ -14,6 +14,11 @@ use Livewire\Component;
 
 new #[Title('Dashboard')] class extends Component {
     /**
+     * How far ahead work counts as falling due shortly.
+     */
+    private const DUE_SOON_DAYS = 7;
+
+    /**
      * The route-bound organization. Locked so the browser can never swap the
      * tenant context on a subsequent request.
      */
@@ -49,6 +54,24 @@ new #[Title('Dashboard')] class extends Component {
     public function managesWork(): bool
     {
         return $this->role->canManageTasks();
+    }
+
+    /**
+     * Get a greeting appropriate to the viewer's local part of the day.
+     */
+    #[Computed]
+    public function greeting(): string
+    {
+        // Drop honorifics such as "Dr." so the greeting uses a given name.
+        $name = str(Auth::user()->name)->trim()->explode(' ')
+            ->reject(fn (string $part) => $part === '' || str_ends_with($part, '.'))
+            ->first() ?? Auth::user()->name;
+
+        return match (true) {
+            now()->hour < 12 => __('Good morning, :name', ['name' => $name]),
+            now()->hour < 18 => __('Good afternoon, :name', ['name' => $name]),
+            default => __('Good evening, :name', ['name' => $name]),
+        };
     }
 
     /*
@@ -112,6 +135,15 @@ new #[Title('Dashboard')] class extends Component {
     }
 
     /**
+     * Get the number of open tasks falling due within the next week.
+     */
+    #[Computed]
+    public function dueSoonTaskCount(): int
+    {
+        return $this->organizationTasks()->dueSoon(self::DUE_SOON_DAYS)->count();
+    }
+
+    /**
      * Get the number of open tasks nobody is responsible for.
      */
     #[Computed]
@@ -171,19 +203,32 @@ new #[Title('Dashboard')] class extends Component {
     */
 
     /**
-     * Get the organization's overdue tasks, most overdue first.
+     * Get the open work a manager should look at: late, falling due, or
+     * unowned.
+     *
+     * Ordering by due date puts the most overdue first, then work falling due,
+     * then undated unassigned work, which is exactly the order of urgency.
      *
      * @return Collection<int, Task>
      */
     #[Computed]
-    public function overdueTasks(): Collection
+    public function attentionTasks(): Collection
     {
         return $this->organizationTasks()
-            ->overdue()
+            ->needsAttention(self::DUE_SOON_DAYS)
             ->with(['project', 'assignee'])
             ->orderBy('due_date')
-            ->take(5)
+            ->take(8)
             ->get();
+    }
+
+    /**
+     * Get the number of open tasks needing attention.
+     */
+    #[Computed]
+    public function attentionCount(): int
+    {
+        return $this->organizationTasks()->needsAttention(self::DUE_SOON_DAYS)->count();
     }
 
     /*
@@ -193,14 +238,25 @@ new #[Title('Dashboard')] class extends Component {
     */
 
     /**
-     * Get this organization's active projects.
+     * Get this organization's active projects with their real task progress.
+     *
+     * Counts are aggregated in the same query, so the list costs two queries
+     * regardless of how many projects come back.
      *
      * @return Collection<int, Project>
      */
     #[Computed]
     public function activeProjects(): Collection
     {
-        return $this->organization->projects()->active()->latest()->take(5)->get();
+        return $this->organization->projects()
+            ->active()
+            ->withCount([
+                'tasks',
+                'tasks as open_tasks_count' => fn (Builder $query) => $query->open(),
+            ])
+            ->latest()
+            ->take(6)
+            ->get();
     }
 
     /**
@@ -211,7 +267,14 @@ new #[Title('Dashboard')] class extends Component {
     #[Computed]
     public function recentProjects(): Collection
     {
-        return $this->organization->projects()->latest()->take(5)->get();
+        return $this->organization->projects()
+            ->withCount([
+                'tasks',
+                'tasks as open_tasks_count' => fn (Builder $query) => $query->open(),
+            ])
+            ->latest()
+            ->take(6)
+            ->get();
     }
 
     /**
@@ -230,19 +293,23 @@ new #[Title('Dashboard')] class extends Component {
 
 <x-pages::organizations.layout
     :organization="$organization"
-    :heading="__('Dashboard')"
-    :subheading="__('What needs your attention in :name', ['name' => $organization->name])"
+    :heading="$this->greeting"
+    :breadcrumb-label="__('Dashboard')"
+    :subheading="__('Here\'s what\'s happening across :name.', ['name' => $organization->name])"
 >
-    <x-slot:actions>
+    <x-slot:meta>
         <flux:badge size="sm" inset="top bottom" :color="$this->role->color()" data-test="organization-role">
             {{ $this->role->label() }}
         </flux:badge>
+    </x-slot:meta>
 
+    <x-slot:actions>
         @can('create', [App\Models\Project::class, $organization])
             <flux:button
                 :href="route('organizations.projects.create', $organization)"
                 variant="primary"
                 icon="plus"
+                size="sm"
                 wire:navigate
                 data-test="dashboard-new-project"
             >
@@ -255,6 +322,7 @@ new #[Title('Dashboard')] class extends Component {
                 :href="route('organizations.members', $organization)"
                 variant="filled"
                 icon="user-plus"
+                size="sm"
                 wire:navigate
                 data-test="dashboard-invite-member"
             >
@@ -263,283 +331,261 @@ new #[Title('Dashboard')] class extends Component {
         @endcan
     </x-slot:actions>
 
+    {{-- KPI row. Employees see their own load first; managers see the organization. --}}
     @if ($this->managesWork)
-        {{-- Owners and managers lead with the health of the whole organization. --}}
-        <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" data-test="organization-metrics">
-            <x-stat-tile
+        {{-- Five across only from xl. At 1024px five cards leave roughly 130px
+             each, which truncates the labels. --}}
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5" data-test="organization-metrics">
+            <x-metric-card
                 :label="__('Active projects')"
                 :value="$this->activeProjectCount"
                 icon="bolt"
+                :context="trans_choice('{1} :count project total|[0,*] :count projects total', $this->projectCount, ['count' => $this->projectCount])"
+                :href="route('organizations.projects.index', $organization)"
                 data-test="organization-active-project-count"
             />
 
-            <x-stat-tile
+            <x-metric-card
                 :label="__('Open tasks')"
                 :value="$this->openTaskCount"
                 icon="clipboard-document-list"
+                :context="trans_choice('{0} None falling due|{1} :count due this week|[2,*] :count due this week', $this->dueSoonTaskCount, ['count' => $this->dueSoonTaskCount])"
                 data-test="organization-open-task-count"
             />
 
-            <x-stat-tile
+            <x-metric-card
                 :label="__('Overdue')"
                 :value="$this->overdueTaskCount"
                 icon="exclamation-triangle"
                 tone="danger"
+                :context="$this->overdueTaskCount === 0 ? __('Nothing is late') : __('Past the due date')"
                 data-test="organization-overdue-task-count"
             />
 
-            <x-stat-tile
+            <x-metric-card
                 :label="__('Completed tasks')"
                 :value="$this->completedTaskCount"
                 icon="check-circle"
+                :context="__('Marked done')"
                 data-test="organization-completed-task-count"
+            />
+
+            <x-metric-card
+                :label="__('Members')"
+                :value="$this->memberCount"
+                icon="users"
+                :context="__('In this organization')"
+                :href="route('organizations.members', $organization)"
+                data-test="organization-member-count"
             />
         </div>
     @else
-        {{-- Employees lead with their own workload. --}}
-        <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3" data-test="personal-metrics">
-            <x-stat-tile
+        {{-- Four cards divide evenly at two and at four, so they never leave a
+             ragged row. --}}
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4" data-test="personal-metrics">
+            <x-metric-card
                 :label="__('My open tasks')"
                 :value="$this->myOpenTaskCount"
                 icon="clipboard-document-list"
+                :context="__('Assigned to you')"
                 data-test="my-open-task-count"
             />
 
-            <x-stat-tile
+            <x-metric-card
                 :label="__('My overdue tasks')"
                 :value="$this->myOverdueTaskCount"
                 icon="exclamation-triangle"
                 tone="danger"
+                :context="$this->myOverdueTaskCount === 0 ? __('You\'re on track') : __('Past the due date')"
                 data-test="my-overdue-task-count"
             />
 
-            <x-stat-tile
+            <x-metric-card
                 :label="__('Active projects')"
                 :value="$this->activeProjectCount"
                 icon="bolt"
+                :context="__('Being worked on')"
+                :href="route('organizations.projects.index', $organization)"
                 data-test="organization-active-project-count"
+            />
+
+            <x-metric-card
+                :label="__('Members')"
+                :value="$this->memberCount"
+                icon="users"
+                :context="__('In this organization')"
+                :href="route('organizations.members', $organization)"
+                data-test="organization-member-count"
             />
         </div>
     @endif
 
-    @if ($this->managesWork && ($this->overdueTaskCount > 0 || $this->unassignedTaskCount > 0))
-        <flux:card class="mt-6 space-y-3" data-test="needs-attention">
-            <flux:heading size="lg">{{ __('Needs attention') }}</flux:heading>
+    @php
+        // A manager's own queue is the only thing that earns the side column.
+        // Without it the main panel takes the full width rather than leaving a
+        // gap where the old organization summary used to be.
+        $hasSideColumn = $this->managesWork && $this->myTasks->isNotEmpty();
+    @endphp
 
-            <flux:separator variant="subtle" />
-
-            @if ($this->unassignedTaskCount > 0)
-                <flux:text class="flex items-start gap-2 text-sm" data-test="unassigned-task-summary">
-                    <flux:icon icon="user-minus" variant="outline" class="mt-0.5 size-4 shrink-0 text-zinc-400" />
-
-                    {{ trans_choice(
-                        '{1} :count open task has nobody assigned to it.|[2,*] :count open tasks have nobody assigned to them.',
-                        $this->unassignedTaskCount,
-                        ['count' => $this->unassignedTaskCount]
-                    ) }}
-                </flux:text>
-            @endif
-
-            @if ($this->overdueTasks->isNotEmpty())
-                <ul class="divide-y divide-zinc-200 dark:divide-zinc-700">
-                    @foreach ($this->overdueTasks as $task)
-                        <li class="flex flex-col gap-1 py-2.5 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-                            <div class="min-w-0">
-                                <flux:text class="truncate font-medium">{{ $task->title }}</flux:text>
-
-                                <flux:link
-                                    :href="route('organizations.projects.show', [$organization, $task->project])"
-                                    wire:navigate
-                                    class="text-xs"
-                                >
-                                    {{ $task->project->name }}
-                                </flux:link>
-                            </div>
-
-                            <div class="flex shrink-0 items-center gap-2">
-                                <flux:text class="text-xs">
-                                    {{ $task->assignee?->name ?? __('Unassigned') }}
-                                </flux:text>
-
-                                <flux:badge size="sm" inset="top bottom" color="red">
-                                    {{ trans_choice('{1} :count day late|[2,*] :count days late', $task->daysOverdue(), ['count' => $task->daysOverdue()]) }}
-                                </flux:badge>
-                            </div>
-                        </li>
-                    @endforeach
-                </ul>
-            @endif
-        </flux:card>
-    @endif
-
-    @if (! $this->managesWork || $this->myTasks->isNotEmpty())
-        <flux:card class="mt-6 space-y-3" data-test="assigned-to-me">
-            <div class="flex items-center justify-between gap-3">
-                <flux:heading size="lg">{{ __('Assigned to me') }}</flux:heading>
-
-                @if ($this->myOverdueTaskCount > 0)
-                    <flux:badge size="sm" inset="top bottom" color="red">
-                        {{ trans_choice('{1} :count overdue|[2,*] :count overdue', $this->myOverdueTaskCount, ['count' => $this->myOverdueTaskCount]) }}
-                    </flux:badge>
-                @endif
-            </div>
-
-            <flux:separator variant="subtle" />
-
-            @if ($this->myTasks->isEmpty())
-                <x-empty-state
-                    icon="check-circle"
-                    :heading="__('Nothing is assigned to you right now.')"
-                    :description="__('Tasks assigned to you across this organization\'s projects appear here, soonest due first.')"
-                    data-test="assigned-to-me-empty"
-                />
-            @else
-                <ul class="divide-y divide-zinc-200 dark:divide-zinc-700" data-test="my-task-list">
-                    @foreach ($this->myTasks as $task)
-                        <li class="flex flex-col gap-1 py-2.5 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-                            <div class="min-w-0">
-                                <flux:text class="truncate font-medium">{{ $task->title }}</flux:text>
-
-                                <flux:link
-                                    :href="route('organizations.projects.show', [$organization, $task->project])"
-                                    wire:navigate
-                                    class="text-xs"
-                                >
-                                    {{ $task->project->name }}
-                                </flux:link>
-                            </div>
-
-                            <div class="flex shrink-0 flex-wrap items-center gap-2">
-                                <flux:badge size="sm" inset="top bottom" :color="$task->status->color()">
-                                    {{ $task->status->label() }}
-                                </flux:badge>
-
-                                @if ($task->isOverdue())
-                                    <flux:badge size="sm" inset="top bottom" color="red">
-                                        {{ trans_choice('{1} :count day late|[2,*] :count days late', $task->daysOverdue(), ['count' => $task->daysOverdue()]) }}
-                                    </flux:badge>
-                                @elseif ($task->due_date)
-                                    <flux:text class="text-xs whitespace-nowrap">
-                                        {{ __('Due :date', ['date' => $task->due_date->toFormattedDateString()]) }}
-                                    </flux:text>
-                                @endif
-                            </div>
-                        </li>
-                    @endforeach
-                </ul>
-            @endif
-        </flux:card>
-    @endif
-
-    <div class="mt-6 grid gap-6 lg:grid-cols-3">
-        <flux:card class="space-y-3 lg:col-span-2" data-test="recent-projects">
-            <div class="flex items-center justify-between gap-3">
-                <flux:heading size="lg">
-                    {{ $this->managesWork ? __('Recent projects') : __('Active projects') }}
-                </flux:heading>
-
-                <flux:button
-                    :href="route('organizations.projects.index', $organization)"
-                    variant="ghost"
-                    size="sm"
-                    icon-trailing="arrow-right"
-                    wire:navigate
+    <div @class(['mt-6 grid gap-5', 'xl:grid-cols-3' => $hasSideColumn])>
+        {{-- Main column: what is slipping. min-w-0 keeps a long task title from
+             widening the column instead of truncating inside it. --}}
+        <div @class(['min-w-0', 'xl:col-span-2' => $hasSideColumn])>
+            @if ($this->managesWork)
+                <x-panel
+                    :title="__('Needs attention')"
+                    :description="__('Late, falling due this week, or waiting for an owner')"
+                    flush
+                    data-test="needs-attention"
                 >
-                    {{ __('View all') }}
-                </flux:button>
-            </div>
+                    @if ($this->attentionCount > 0)
+                        <x-slot:action>
+                            <span class="tabular text-xs text-zinc-500 dark:text-zinc-400" data-test="unassigned-task-summary">
+                                {{ __(':overdue overdue · :unassigned unassigned', [
+                                    'overdue' => $this->overdueTaskCount,
+                                    'unassigned' => $this->unassignedTaskCount,
+                                ]) }}
+                            </span>
+                        </x-slot:action>
+                    @endif
 
-            <flux:separator variant="subtle" />
-
-            @php
-                $projects = $this->managesWork ? $this->recentProjects : $this->activeProjects;
-            @endphp
-
-            @if ($projects->isEmpty())
-                <x-empty-state
-                    icon="folder"
-                    :heading="$this->projectCount === 0 ? __('No projects yet.') : __('No active projects.')"
-                    :description="$this->projectCount === 0
-                        ? __('Projects hold the work your team delivers. Create one to start adding tasks.')
-                        : __('Nothing is currently being worked on. Move a project to Active to see it here.')"
-                    data-test="recent-projects-empty"
-                >
-                    @can('create', [App\Models\Project::class, $organization])
-                        @if ($this->projectCount === 0)
-                            <x-slot:action>
-                                <flux:button
-                                    :href="route('organizations.projects.create', $organization)"
-                                    variant="primary"
-                                    size="sm"
-                                    icon="plus"
-                                    wire:navigate
-                                    data-test="empty-create-project"
-                                >
-                                    {{ __('Create your first project') }}
-                                </flux:button>
-                            </x-slot:action>
-                        @endif
-                    @endcan
-                </x-empty-state>
+                    @if ($this->attentionTasks->isEmpty())
+                        <x-empty-state
+                            icon="check-circle"
+                            :heading="__('No tasks need your attention')"
+                            :description="__('Nothing is late, falling due this week, or missing an owner. You\'re all caught up.')"
+                        />
+                    @else
+                        <ul class="divide-y divide-zinc-200 dark:divide-white/10">
+                            @foreach ($this->attentionTasks as $task)
+                                <x-task-row :task="$task" :organization="$organization" />
+                            @endforeach
+                        </ul>
+                    @endif
+                </x-panel>
             @else
-                <ul class="divide-y divide-zinc-200 dark:divide-zinc-700">
-                    @foreach ($projects as $project)
-                        <li class="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
-                            <flux:link
-                                :href="route('organizations.projects.show', [$organization, $project])"
-                                wire:navigate
-                                class="min-w-0 truncate font-medium"
-                            >
-                                {{ $project->name }}
-                            </flux:link>
-
-                            <flux:badge size="sm" inset="top bottom" :color="$project->status->color()">
-                                {{ $project->status->label() }}
+                <x-panel
+                    :title="__('Your work')"
+                    :description="__('Tasks assigned to you, soonest due first')"
+                    flush
+                    data-test="assigned-to-me"
+                >
+                    @if ($this->myOverdueTaskCount > 0)
+                        <x-slot:action>
+                            <flux:badge size="sm" inset="top bottom" color="red">
+                                {{ trans_choice('{1} :count overdue|[2,*] :count overdue', $this->myOverdueTaskCount, ['count' => $this->myOverdueTaskCount]) }}
                             </flux:badge>
-                        </li>
+                        </x-slot:action>
+                    @endif
+
+                    @if ($this->myTasks->isEmpty())
+                        <x-empty-state
+                            icon="check-circle"
+                            :heading="__('Nothing is assigned to you right now.')"
+                            :description="__('Tasks assigned to you across this organization\'s projects appear here, soonest due first.')"
+                            data-test="assigned-to-me-empty"
+                        />
+                    @else
+                        <ul class="divide-y divide-zinc-200 dark:divide-white/10" data-test="my-task-list">
+                            @foreach ($this->myTasks as $task)
+                                <x-task-row :task="$task" :organization="$organization" :show-assignee="false" />
+                            @endforeach
+                        </ul>
+                    @endif
+                </x-panel>
+            @endif
+        </div>
+
+        {{-- Side column: the manager's own queue. Member and project counts live
+             in the metric row above, and members are reachable from both that row
+             and the sidebar, so a summary panel here only repeated the page. --}}
+        @if ($hasSideColumn)
+            <x-panel :title="__('Your work')" class="self-start" flush data-test="assigned-to-me">
+                <x-slot:action>
+                    <span class="tabular text-xs text-zinc-500 dark:text-zinc-400">{{ $this->myOpenTaskCount }}</span>
+                </x-slot:action>
+
+                <ul class="divide-y divide-zinc-200 dark:divide-white/10" data-test="my-task-list">
+                    @foreach ($this->myTasks->take(5) as $task)
+                        <x-task-row :task="$task" :organization="$organization" :show-assignee="false" />
                     @endforeach
                 </ul>
-            @endif
-        </flux:card>
+            </x-panel>
+        @endif
+    </div>
 
-        <flux:card class="space-y-3 self-start" data-test="organization-summary">
-            <flux:heading size="lg">{{ __('Organization') }}</flux:heading>
+    {{-- Projects. --}}
+    @php
+        $projects = $this->managesWork ? $this->recentProjects : $this->activeProjects;
+    @endphp
 
-            <flux:separator variant="subtle" />
-
-            <dl class="space-y-4">
-                <div class="flex items-center justify-between gap-3">
-                    <dt><flux:subheading class="text-xs uppercase tracking-wide">{{ __('Members') }}</flux:subheading></dt>
-                    <dd><flux:text data-test="organization-member-count">{{ $this->memberCount }}</flux:text></dd>
-                </div>
-
-                <div class="flex items-center justify-between gap-3">
-                    <dt><flux:subheading class="text-xs uppercase tracking-wide">{{ __('Projects') }}</flux:subheading></dt>
-                    <dd><flux:text data-test="organization-project-count">{{ $this->projectCount }}</flux:text></dd>
-                </div>
-
-                <div class="min-w-0 space-y-1">
-                    <dt><flux:subheading class="text-xs uppercase tracking-wide">{{ __('URL') }}</flux:subheading></dt>
-                    <dd>
-                        <flux:text class="truncate font-mono text-sm" data-test="organization-slug">
-                            /o/{{ $organization->slug }}
-                        </flux:text>
-                    </dd>
-                </div>
-            </dl>
-
-            <flux:separator variant="subtle" />
-
+    <x-panel
+        class="mt-5"
+        :title="$this->managesWork ? __('Recent projects') : __('Active projects')"
+        :description="__('Jump back into the work')"
+        flush
+        data-test="recent-projects"
+    >
+        <x-slot:action>
             <flux:button
-                :href="route('organizations.members', $organization)"
-                variant="filled"
+                :href="route('organizations.projects.index', $organization)"
+                variant="ghost"
                 size="sm"
                 icon-trailing="arrow-right"
                 wire:navigate
-                class="w-full"
             >
-                {{ __('View members') }}
+                {{ __('View all') }}
             </flux:button>
-        </flux:card>
-    </div>
+        </x-slot:action>
+
+        @if ($projects->isEmpty())
+            <x-empty-state
+                icon="folder"
+                :heading="$this->projectCount === 0 ? __('No projects yet.') : __('No active projects.')"
+                :description="$this->projectCount === 0
+                    ? __('Create your first project to start organizing your team\'s work.')
+                    : __('Nothing is currently being worked on. Move a project to Active to see it here.')"
+                data-test="recent-projects-empty"
+            >
+                @can('create', [App\Models\Project::class, $organization])
+                    @if ($this->projectCount === 0)
+                        <x-slot:action>
+                            <flux:button
+                                :href="route('organizations.projects.create', $organization)"
+                                variant="primary"
+                                size="sm"
+                                icon="plus"
+                                wire:navigate
+                                data-test="empty-create-project"
+                            >
+                                {{ __('Create project') }}
+                            </flux:button>
+                        </x-slot:action>
+                    @endif
+                @endcan
+            </x-empty-state>
+        @else
+            <ul class="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-3">
+                @foreach ($projects as $project)
+                    <li>
+                        <a
+                            href="{{ route('organizations.projects.show', [$organization, $project]) }}"
+                            wire:navigate
+                            class="wfh-panel wfh-row flex h-full flex-col gap-3 p-3"
+                        >
+                            <div class="flex items-start justify-between gap-2">
+                                <span class="truncate text-sm font-medium text-zinc-900 dark:text-white">
+                                    {{ $project->name }}
+                                </span>
+
+                                <x-status-badge :status="$project->status" />
+                            </div>
+
+                            <x-project-progress :project="$project" />
+                        </a>
+                    </li>
+                @endforeach
+            </ul>
+        @endif
+    </x-panel>
 </x-pages::organizations.layout>

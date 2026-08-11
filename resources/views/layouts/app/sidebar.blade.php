@@ -7,9 +7,13 @@
     <head>
         @include('partials.head')
     </head>
-    <body class="min-h-screen bg-white dark:bg-zinc-900">
-        <flux:sidebar sticky collapsible="mobile" class="border-e border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950">
-            <flux:sidebar.header>
+    <body class="min-h-screen bg-canvas">
+        <flux:sidebar
+            sticky
+            collapsible="mobile"
+            class="border-e border-hairline bg-surface"
+        >
+            <flux:sidebar.header class="px-2">
                 <x-app-logo :sidebar="true" href="{{ route('dashboard') }}" wire:navigate />
                 <flux:sidebar.collapse class="lg:hidden" />
             </flux:sidebar.header>
@@ -17,19 +21,8 @@
             <livewire:pages::organizations.switcher />
 
             <flux:sidebar.nav>
-                <flux:sidebar.group :heading="__('Workspace')" class="grid">
-                    <flux:sidebar.item
-                        icon="building-office-2"
-                        :href="route('dashboard')"
-                        :current="request()->routeIs('dashboard')"
-                        wire:navigate
-                    >
-                        {{ __('Organizations') }}
-                    </flux:sidebar.item>
-                </flux:sidebar.group>
-
                 @if ($organization)
-                    <flux:sidebar.group :heading="$organization->name" class="grid">
+                    <flux:sidebar.group :heading="__('Organization')" class="grid">
                         <flux:sidebar.item
                             icon="squares-2x2"
                             :href="route('organizations.dashboard', $organization)"
@@ -69,6 +62,17 @@
                         @endcan
                     </flux:sidebar.group>
                 @endif
+
+                <flux:sidebar.group :heading="__('Workspace')" class="grid">
+                    <flux:sidebar.item
+                        icon="building-office-2"
+                        :href="route('dashboard')"
+                        :current="request()->routeIs('dashboard')"
+                        wire:navigate
+                    >
+                        {{ __('All organizations') }}
+                    </flux:sidebar.item>
+                </flux:sidebar.group>
             </flux:sidebar.nav>
 
             <flux:spacer />
@@ -87,8 +91,14 @@
             <x-desktop-user-menu :sidebar="true" class="hidden lg:block" />
         </flux:sidebar>
 
-        <flux:header class="lg:hidden">
+        <flux:header class="border-b border-hairline bg-surface lg:hidden">
             <flux:sidebar.toggle class="lg:hidden" icon="bars-2" inset="left" />
+
+            @if ($organization)
+                <span class="min-w-0 truncate text-sm font-medium text-zinc-900 dark:text-white">
+                    {{ $organization->name }}
+                </span>
+            @endif
 
             <flux:spacer />
 

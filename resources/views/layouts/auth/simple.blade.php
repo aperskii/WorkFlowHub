@@ -3,7 +3,7 @@
     <head>
         @include('partials.head')
     </head>
-    <body class="min-h-screen bg-zinc-50 antialiased dark:bg-zinc-950">
+    <body class="min-h-screen bg-canvas antialiased">
         <div class="flex min-h-svh flex-col items-center justify-center gap-6 p-6 md:p-10">
             <a
                 href="{{ route('home') }}"
@@ -20,7 +20,7 @@
             </a>
 
             <div class="w-full max-w-md">
-                <div class="rounded-xl border border-zinc-200 bg-white p-6 shadow-sm sm:p-8 dark:border-zinc-800 dark:bg-zinc-900">
+                <div class="wfh-panel p-6 sm:p-8">
                     <div class="flex flex-col gap-6">
                         {{ $slot }}
                     </div>
@@ -28,7 +28,7 @@
             </div>
 
             <flux:text class="text-center text-xs">
-                {{ __('Multi-tenant project, team, and time management.') }}
+                {{ __('Multi-tenant project and team management.') }}
             </flux:text>
         </div>
 

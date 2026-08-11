@@ -3,9 +3,9 @@
     <head>
         @include('partials.head')
     </head>
-    <body class="min-h-screen bg-zinc-50 antialiased dark:bg-zinc-950">
+    <body class="min-h-screen bg-canvas antialiased">
         <div class="flex min-h-svh flex-col">
-            <header class="border-b border-zinc-200 dark:border-zinc-800">
+            <header class="border-b border-hairline">
                 <div class="mx-auto flex w-full max-w-5xl items-center justify-between gap-4 px-6 py-4">
                     <div class="flex items-center gap-2.5">
                         <span class="flex aspect-square size-8 items-center justify-center rounded-lg bg-accent-content text-accent-foreground">
@@ -38,11 +38,11 @@
             <main class="mx-auto flex w-full max-w-5xl flex-1 flex-col justify-center px-6 py-16">
                 <div class="max-w-2xl space-y-6">
                     <flux:heading size="xl" level="1" class="text-4xl! leading-tight! sm:text-5xl!">
-                        {{ __('Run your projects, team, and clients in one place.') }}
+                        {{ __('Run your projects and your team in one place.') }}
                     </flux:heading>
 
                     <flux:subheading class="text-lg!">
-                        {{ __('WorkFlowHub is a multi-tenant platform for small companies and agencies to manage organizations, projects, tasks, clients, and time tracking.') }}
+                        {{ __('WorkFlowHub is a multi-tenant platform for small companies and agencies to manage organizations, projects, tasks, and the people who deliver them.') }}
                     </flux:subheading>
 
                     <div class="flex flex-wrap items-center gap-3 pt-2">
@@ -62,34 +62,26 @@
                     </div>
                 </div>
 
-                <div class="mt-16 grid gap-4 sm:grid-cols-3">
-                    <flux:card class="space-y-2">
-                        <flux:icon icon="building-office-2" variant="outline" class="size-5 text-zinc-400" />
-                        <flux:heading size="lg">{{ __('Organizations') }}</flux:heading>
-                        <flux:text class="text-sm">
-                            {{ __('Belong to multiple organizations, each with its own members and roles.') }}
-                        </flux:text>
-                    </flux:card>
+                {{-- Same panel chrome as the signed-in product, so the landing
+                     page and the application read as one thing. --}}
+                <div class="mt-16 grid gap-3 sm:grid-cols-3">
+                    @foreach ([
+                        ['building-office-2', __('Organizations'), __('Belong to multiple organizations, each with its own members and roles.')],
+                        ['users', __('Roles'), __('Invite teammates by email as an owner, manager, or employee. Roles are scoped per organization.')],
+                        ['shield-check', __('Isolation'), __('Every organization\'s data stays scoped to its own members.')],
+                    ] as [$icon, $title, $body])
+                        <div class="wfh-panel space-y-2 p-4">
+                            <flux:icon :icon="$icon" variant="outline" class="size-5 text-zinc-400 dark:text-zinc-500" />
 
-                    <flux:card class="space-y-2">
-                        <flux:icon icon="users" variant="outline" class="size-5 text-zinc-400" />
-                        <flux:heading size="lg">{{ __('Roles') }}</flux:heading>
-                        <flux:text class="text-sm">
-                            {{ __('Owner, manager, and employee roles are scoped per organization.') }}
-                        </flux:text>
-                    </flux:card>
+                            <h2 class="text-sm font-semibold text-zinc-900 dark:text-white">{{ $title }}</h2>
 
-                    <flux:card class="space-y-2">
-                        <flux:icon icon="shield-check" variant="outline" class="size-5 text-zinc-400" />
-                        <flux:heading size="lg">{{ __('Isolation') }}</flux:heading>
-                        <flux:text class="text-sm">
-                            {{ __('Every organization\'s data stays scoped to its own members.') }}
-                        </flux:text>
-                    </flux:card>
+                            <p class="text-sm text-zinc-500 dark:text-zinc-400">{{ $body }}</p>
+                        </div>
+                    @endforeach
                 </div>
             </main>
 
-            <footer class="border-t border-zinc-200 dark:border-zinc-800">
+            <footer class="border-t border-hairline">
                 <div class="mx-auto w-full max-w-5xl px-6 py-6">
                     <flux:text class="text-xs">
                         &copy; {{ now()->year }} {{ config('app.name') }}

@@ -12,10 +12,14 @@
 
 @if ($assignableForMember->isNotEmpty())
     <flux:dropdown position="bottom" align="start">
+        {{-- Disabled while this member's own role change is in flight, so the
+             menu cannot be reopened and fired a second time. --}}
         <flux:button
             size="sm"
             variant="ghost"
             icon-trailing="chevron-down"
+            wire:loading.attr="disabled"
+            :wire:target="'updateRole('.$membership->id.')'"
             :data-test="'change-role-'.$membership->id"
         >
             {{ $membership->role->label() }}

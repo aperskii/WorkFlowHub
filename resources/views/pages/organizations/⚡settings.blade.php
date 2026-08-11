@@ -79,17 +79,13 @@ new #[Title('Organization settings')] class extends Component {
     :heading="__('Organization settings')"
     :subheading="__('Manage how this organization appears across WorkFlowHub')"
 >
-    <div class="grid gap-6 lg:grid-cols-3">
-        <div class="lg:col-span-2">
-            <flux:card class="space-y-6">
-                <div class="space-y-1">
-                    <flux:heading size="lg">{{ __('General') }}</flux:heading>
-                    <flux:subheading>{{ __('The name your team sees throughout the application') }}</flux:subheading>
-                </div>
-
-                <flux:separator variant="subtle" />
-
-                <form wire:submit="updateOrganization" class="space-y-6">
+    <div class="grid gap-5 lg:grid-cols-3">
+        <div class="space-y-5 lg:col-span-2">
+            <x-panel
+                :title="__('General')"
+                :description="__('The name your team sees throughout the application')"
+            >
+                <form wire:submit="updateOrganization" class="space-y-5">
                     <flux:input
                         wire:model="name"
                         :label="__('Name')"
@@ -108,78 +104,110 @@ new #[Title('Organization settings')] class extends Component {
                         class="font-mono"
                     />
 
-                    <div class="flex items-center gap-3">
-                        <flux:button variant="primary" type="submit" data-test="update-organization-button">
+                    <div class="flex items-center gap-2">
+                        <flux:button
+                            variant="primary"
+                            size="sm"
+                            type="submit"
+                            wire:loading.attr="disabled"
+                            wire:target="updateOrganization"
+                            data-test="update-organization-button"
+                        >
                             {{ __('Save changes') }}
                         </flux:button>
 
                         <flux:button
                             :href="route('organizations.dashboard', $organization)"
                             variant="ghost"
+                            size="sm"
                             wire:navigate
                         >
                             {{ __('Cancel') }}
                         </flux:button>
                     </div>
                 </form>
-            </flux:card>
+            </x-panel>
+
+            <x-panel :title="__('Members')" :description="__('Who belongs to this organization and what they may do')">
+                <p class="text-sm text-zinc-600 dark:text-zinc-300">
+                    {{ __('Only owners can rename or delete an organization. Managers can invite and manage members, and employees have read access.') }}
+                </p>
+
+                <flux:button
+                    :href="route('organizations.members', $organization)"
+                    variant="filled"
+                    size="sm"
+                    icon="users"
+                    wire:navigate
+                    class="mt-4"
+                >
+                    {{ __('Manage members') }}
+                </flux:button>
+            </x-panel>
         </div>
 
-        <flux:card class="space-y-3 self-start">
-            <flux:heading size="lg">{{ __('Who can change this') }}</flux:heading>
+        <x-panel :title="__('At a glance')" class="self-start">
+            <dl class="space-y-3 text-sm">
+                <div class="flex items-center justify-between gap-3">
+                    <dt class="text-zinc-500 dark:text-zinc-400">{{ __('Members') }}</dt>
+                    <dd class="tabular font-medium text-zinc-900 dark:text-white">{{ $organization->memberships()->count() }}</dd>
+                </div>
 
-            <flux:separator variant="subtle" />
+                <div class="flex items-center justify-between gap-3">
+                    <dt class="text-zinc-500 dark:text-zinc-400">{{ __('Projects') }}</dt>
+                    <dd class="tabular font-medium text-zinc-900 dark:text-white">{{ $organization->projects()->count() }}</dd>
+                </div>
 
-            <flux:text class="text-sm">
-                {{ __('Only owners can rename or delete an organization. Managers can invite and manage members, and employees have read access.') }}
-            </flux:text>
-
-            <flux:button
-                :href="route('organizations.members', $organization)"
-                variant="filled"
-                size="sm"
-                icon="users"
-                wire:navigate
-                class="w-full"
-            >
-                {{ __('Manage members') }}
-            </flux:button>
-        </flux:card>
+                <div class="flex items-center justify-between gap-3">
+                    <dt class="text-zinc-500 dark:text-zinc-400">{{ __('Created') }}</dt>
+                    <dd class="tabular font-medium text-zinc-900 dark:text-white">{{ $organization->created_at->format('M j, Y') }}</dd>
+                </div>
+            </dl>
+        </x-panel>
     </div>
 
     @can('delete', $organization)
-        <flux:card class="mt-6 space-y-4 border-red-200 dark:border-red-900/60" data-test="danger-zone">
-            <div class="space-y-1">
-                <flux:heading size="lg" class="text-red-600 dark:text-red-500">
-                    {{ __('Delete organization') }}
-                </flux:heading>
+        <section
+            class="mt-5 overflow-hidden rounded-lg border border-red-200 bg-white dark:border-red-500/30 dark:bg-zinc-900"
+            data-test="danger-zone"
+        >
+            <header class="border-b border-red-200 bg-red-50/60 px-4 py-3 dark:border-red-500/30 dark:bg-red-500/5">
+                <h2 class="text-sm font-semibold text-red-700 dark:text-red-400">{{ __('Danger zone') }}</h2>
 
-                <flux:subheading>
-                    {{ __('This permanently deletes :name and everything inside it.', ['name' => $organization->name]) }}
-                </flux:subheading>
+                <p class="mt-0.5 text-xs text-red-700 dark:text-red-400">
+                    {{ __('Irreversible actions that affect everyone in this organization') }}
+                </p>
+            </header>
+
+            <div class="space-y-4 p-4">
+                <div class="space-y-1">
+                    <h3 class="text-sm font-semibold text-zinc-900 dark:text-white">{{ __('Delete organization') }}</h3>
+
+                    <p class="text-sm text-zinc-500 dark:text-zinc-400">
+                        {{ __('This permanently deletes :name and everything inside it.', ['name' => $organization->name]) }}
+                    </p>
+                </div>
+
+                <flux:callout variant="danger" icon="exclamation-triangle">
+                    <flux:callout.heading>{{ __('This cannot be undone.') }}</flux:callout.heading>
+
+                    <flux:callout.text>
+                        <ul class="list-inside list-disc space-y-1">
+                            <li>{{ trans_choice('{1} :count project will be deleted|[0,*] :count projects will be deleted', $organization->projects()->count(), ['count' => $organization->projects()->count()]) }}</li>
+                            <li>{{ trans_choice('{1} :count member will lose access|[0,*] :count members will lose access', $organization->memberships()->count(), ['count' => $organization->memberships()->count()]) }}</li>
+                            <li>{{ __('Pending invitations will stop working') }}</li>
+                            <li>{{ __('User accounts themselves are not deleted') }}</li>
+                        </ul>
+                    </flux:callout.text>
+                </flux:callout>
+
+                <flux:modal.trigger name="confirm-organization-deletion">
+                    <flux:button variant="danger" size="sm" icon="trash" data-test="delete-organization-button">
+                        {{ __('Delete this organization') }}
+                    </flux:button>
+                </flux:modal.trigger>
             </div>
-
-            <flux:separator variant="subtle" />
-
-            <flux:callout variant="danger" icon="exclamation-triangle">
-                <flux:callout.heading>{{ __('This cannot be undone.') }}</flux:callout.heading>
-
-                <flux:callout.text>
-                    <ul class="list-inside list-disc space-y-1">
-                        <li>{{ trans_choice('{1} :count project will be deleted|[0,*] :count projects will be deleted', $organization->projects()->count(), ['count' => $organization->projects()->count()]) }}</li>
-                        <li>{{ trans_choice('{1} :count member will lose access|[0,*] :count members will lose access', $organization->memberships()->count(), ['count' => $organization->memberships()->count()]) }}</li>
-                        <li>{{ __('Pending invitations will stop working') }}</li>
-                        <li>{{ __('User accounts themselves are not deleted') }}</li>
-                    </ul>
-                </flux:callout.text>
-            </flux:callout>
-
-            <flux:modal.trigger name="confirm-organization-deletion">
-                <flux:button variant="danger" icon="trash" data-test="delete-organization-button">
-                    {{ __('Delete this organization') }}
-                </flux:button>
-            </flux:modal.trigger>
-        </flux:card>
+        </section>
 
         <flux:modal name="confirm-organization-deletion" class="max-w-lg">
             <form wire:submit="deleteOrganization" class="space-y-6">
@@ -204,7 +232,13 @@ new #[Title('Organization settings')] class extends Component {
                         <flux:button variant="filled" type="button">{{ __('Cancel') }}</flux:button>
                     </flux:modal.close>
 
-                    <flux:button variant="danger" type="submit" data-test="confirm-delete-organization-button">
+                    <flux:button
+                        variant="danger"
+                        type="submit"
+                        wire:loading.attr="disabled"
+                        wire:target="deleteOrganization"
+                        data-test="confirm-delete-organization-button"
+                    >
                         {{ __('Delete organization') }}
                     </flux:button>
                 </div>

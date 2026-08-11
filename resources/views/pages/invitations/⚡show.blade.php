@@ -121,42 +121,48 @@ new #[Layout('layouts::auth')] #[Title('Invitation')] class extends Component {
         </flux:subheading>
     </div>
 
-    <flux:card class="space-y-3">
-        <dl class="space-y-3">
+    {{-- Same panel chrome as the rest of the product, so the first screen a new
+         member sees already looks like the application they are joining. --}}
+    <x-panel>
+        <dl class="space-y-3 text-sm">
             <div class="flex items-center justify-between gap-3">
-                <dt><flux:subheading class="text-xs uppercase tracking-wide">{{ __('Organization') }}</flux:subheading></dt>
-                <dd><flux:text class="truncate font-medium" data-test="invitation-organization">{{ $this->invitation->organization->name }}</flux:text></dd>
-            </div>
-
-            <div class="flex items-center justify-between gap-3">
-                <dt><flux:subheading class="text-xs uppercase tracking-wide">{{ __('Invited by') }}</flux:subheading></dt>
-                <dd>
-                    <flux:text class="truncate" data-test="invitation-inviter">
-                        {{ $this->invitation->invitedBy?->name ?? __('A member of the organization') }}
-                    </flux:text>
+                <dt class="text-zinc-500 dark:text-zinc-400">{{ __('Organization') }}</dt>
+                <dd class="truncate font-medium text-zinc-900 dark:text-white" data-test="invitation-organization">
+                    {{ $this->invitation->organization->name }}
                 </dd>
             </div>
 
             <div class="flex items-center justify-between gap-3">
-                <dt><flux:subheading class="text-xs uppercase tracking-wide">{{ __('Role') }}</flux:subheading></dt>
+                <dt class="text-zinc-500 dark:text-zinc-400">{{ __('Invited by') }}</dt>
+                <dd class="truncate text-zinc-900 dark:text-white" data-test="invitation-inviter">
+                    {{ $this->invitation->invitedBy?->name ?? __('A member of the organization') }}
+                </dd>
+            </div>
+
+            <div class="flex items-center justify-between gap-3">
+                <dt class="text-zinc-500 dark:text-zinc-400">{{ __('Role') }}</dt>
                 <dd>
-                    <flux:badge size="sm" inset="top bottom" data-test="invitation-role">
+                    <flux:badge size="sm" inset="top bottom" :color="$this->invitation->role->color()" data-test="invitation-role">
                         {{ $this->invitation->role->label() }}
                     </flux:badge>
                 </dd>
             </div>
 
             <div class="flex items-center justify-between gap-3">
-                <dt><flux:subheading class="text-xs uppercase tracking-wide">{{ __('Invited address') }}</flux:subheading></dt>
-                <dd><flux:text class="truncate font-mono text-xs" data-test="invitation-email">{{ $this->invitation->email }}</flux:text></dd>
+                <dt class="text-zinc-500 dark:text-zinc-400">{{ __('Invited address') }}</dt>
+                <dd class="truncate font-mono text-xs text-zinc-900 dark:text-white" data-test="invitation-email">
+                    {{ $this->invitation->email }}
+                </dd>
             </div>
 
             <div class="flex items-center justify-between gap-3">
-                <dt><flux:subheading class="text-xs uppercase tracking-wide">{{ __('Expires') }}</flux:subheading></dt>
-                <dd><flux:text data-test="invitation-expires">{{ $this->invitation->expires_at->toFormattedDateString() }}</flux:text></dd>
+                <dt class="text-zinc-500 dark:text-zinc-400">{{ __('Expires') }}</dt>
+                <dd class="tabular text-zinc-900 dark:text-white" data-test="invitation-expires">
+                    {{ $this->invitation->expires_at->toFormattedDateString() }}
+                </dd>
             </div>
         </dl>
-    </flux:card>
+    </x-panel>
 
     @error('invitation')
         <flux:callout variant="danger" icon="exclamation-triangle" data-test="invitation-error">
@@ -250,6 +256,8 @@ new #[Layout('layouts::auth')] #[Title('Invitation')] class extends Component {
             variant="primary"
             class="w-full"
             wire:click="accept"
+            wire:loading.attr="disabled"
+            wire:target="accept"
             data-test="accept-invitation-button"
         >
             {{ __('Accept invitation') }}

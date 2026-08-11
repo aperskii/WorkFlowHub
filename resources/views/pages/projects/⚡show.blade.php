@@ -154,14 +154,23 @@ new #[Title('Project')] class extends Component {
     :parent-label="__('Projects')"
     :parent-href="route('organizations.projects.index', $organization)"
 >
-    <x-slot:actions>
+    <x-slot:meta>
         <flux:badge size="sm" inset="top bottom" :color="$project->status->color()" data-test="project-status-badge">
             {{ $project->status->label() }}
         </flux:badge>
+    </x-slot:meta>
 
+    <x-slot:actions>
         @can('changeStatus', $project)
             <flux:dropdown position="bottom" align="end">
-                <flux:button size="sm" variant="filled" icon-trailing="chevron-down" data-test="change-status-button">
+                <flux:button
+                    size="sm"
+                    variant="filled"
+                    icon-trailing="chevron-down"
+                    wire:loading.attr="disabled"
+                    wire:target="changeStatus"
+                    data-test="change-status-button"
+                >
                     {{ __('Status') }}
                 </flux:button>
 
@@ -215,104 +224,84 @@ new #[Title('Project')] class extends Component {
         </flux:callout>
     @endif
 
-    {{-- The work is the point of this page, so it leads. Context follows below. --}}
-    <livewire:pages::projects.tasks :project="$project" />
+    @if ($editing)
+        <x-panel
+            class="mb-5"
+            :title="__('Edit project')"
+            :description="__('The project URL does not change when you rename it.')"
+            data-test="project-edit-form"
+        >
+            <form wire:submit="updateProject" class="space-y-5">
+                <flux:input wire:model="name" :label="__('Name')" type="text" required />
 
-    <div class="mt-6 grid gap-6 lg:grid-cols-3">
-        <div class="lg:col-span-2">
-            @if ($editing)
-                <flux:card class="space-y-6" data-test="project-edit-form">
-                    <div class="space-y-1">
-                        <flux:heading size="lg">{{ __('Edit project') }}</flux:heading>
-                        <flux:subheading>{{ __('The project URL does not change when you rename it.') }}</flux:subheading>
-                    </div>
+                <flux:textarea wire:model="description" :label="__('Description')" rows="4" />
 
-                    <flux:separator variant="subtle" />
+                <div class="flex items-center gap-2">
+                    <flux:button
+                        variant="primary"
+                        size="sm"
+                        type="submit"
+                        wire:loading.attr="disabled"
+                        wire:target="updateProject"
+                        data-test="save-project-button"
+                    >
+                        {{ __('Save changes') }}
+                    </flux:button>
 
-                    <form wire:submit="updateProject" class="space-y-6">
-                        <flux:input wire:model="name" :label="__('Name')" type="text" required />
-
-                        <flux:textarea wire:model="description" :label="__('Description')" rows="4" />
-
-                        <div class="flex items-center gap-3">
-                            <flux:button
-                                variant="primary"
-                                type="submit"
-                                wire:loading.attr="disabled"
-                                wire:target="updateProject"
-                                data-test="save-project-button"
-                            >
-                                {{ __('Save changes') }}
-                            </flux:button>
-
-                            <flux:button variant="ghost" wire:click="cancelEdit" type="button">
-                                {{ __('Cancel') }}
-                            </flux:button>
-                        </div>
-                    </form>
-                </flux:card>
-            @else
-                <flux:card class="space-y-3">
-                    <flux:heading size="lg">{{ __('Description') }}</flux:heading>
-
-                    <flux:separator variant="subtle" />
-
-                    @if (filled($project->description))
-                        <flux:text class="whitespace-pre-line" data-test="project-description">
-                            {{ $project->description }}
-                        </flux:text>
-                    @else
-                        <flux:text class="text-sm" data-test="project-description-empty">
-                            {{ __('No description yet.') }}
-                        </flux:text>
-                    @endif
-                </flux:card>
-            @endif
-        </div>
-
-        <flux:card class="space-y-3 self-start">
-            <flux:heading size="lg">{{ __('Details') }}</flux:heading>
-
-            <flux:separator variant="subtle" />
-
-            <dl class="space-y-4">
-                <div class="min-w-0 space-y-1">
-                    <dt><flux:subheading class="text-xs uppercase tracking-wide">{{ __('Status') }}</flux:subheading></dt>
-                    <dd>
-                        <flux:badge size="sm" inset="top bottom" :color="$project->status->color()">
-                            {{ $project->status->label() }}
-                        </flux:badge>
-                    </dd>
+                    <flux:button variant="ghost" size="sm" wire:click="cancelEdit" type="button">
+                        {{ __('Cancel') }}
+                    </flux:button>
                 </div>
+            </form>
+        </x-panel>
+    @else
+        {{-- Description sits in the header band as context, not as a section
+             competing with the work itself. --}}
+        <div class="mb-5 flex flex-col gap-3 border-y border-zinc-200 py-3 sm:flex-row sm:items-center sm:justify-between dark:border-white/10">
+            <div class="min-w-0 flex-1">
+                @if (filled($project->description))
+                    <p class="text-sm whitespace-pre-line text-zinc-600 dark:text-zinc-300" data-test="project-description">
+                        {{ $project->description }}
+                    </p>
+                @else
+                    <p class="text-sm text-zinc-500 dark:text-zinc-400" data-test="project-description-empty">
+                        {{ __('No description yet.') }}
+                    </p>
+                @endif
+            </div>
 
-                <div class="min-w-0 space-y-1">
-                    <dt><flux:subheading class="text-xs uppercase tracking-wide">{{ __('URL') }}</flux:subheading></dt>
+            <dl class="flex shrink-0 flex-wrap items-center gap-x-5 gap-y-1 text-xs text-zinc-500 dark:text-zinc-400">
+                <div class="flex items-center gap-1.5">
+                    <dt class="sr-only">{{ __('Organization') }}</dt>
+                    <flux:icon icon="building-office-2" variant="outline" class="size-3.5" />
                     <dd>
-                        <flux:text class="truncate font-mono text-sm" data-test="project-slug">
-                            /o/{{ $organization->slug }}/projects/{{ $project->slug }}
-                        </flux:text>
-                    </dd>
-                </div>
-
-                <div class="min-w-0 space-y-1">
-                    <dt><flux:subheading class="text-xs uppercase tracking-wide">{{ __('Created') }}</flux:subheading></dt>
-                    <dd><flux:text>{{ $project->created_at->toFormattedDateString() }}</flux:text></dd>
-                </div>
-
-                <div class="min-w-0 space-y-1">
-                    <dt><flux:subheading class="text-xs uppercase tracking-wide">{{ __('Organization') }}</flux:subheading></dt>
-                    <dd>
-                        <flux:link
-                            :href="route('organizations.dashboard', $organization)"
+                        <a
+                            href="{{ route('organizations.dashboard', $organization) }}"
                             wire:navigate
-                        >
-                            {{ $organization->name }}
-                        </flux:link>
+                            class="hover:text-zinc-800 hover:underline dark:hover:text-zinc-200"
+                        >{{ $organization->name }}</a>
+                    </dd>
+                </div>
+
+                <div class="flex items-center gap-1.5">
+                    <dt class="sr-only">{{ __('Created') }}</dt>
+                    <flux:icon icon="calendar-days" variant="outline" class="size-3.5" />
+                    <dd class="tabular">{{ $project->created_at->format('M j, Y') }}</dd>
+                </div>
+
+                <div class="hidden items-center gap-1.5 xl:flex">
+                    <dt class="sr-only">{{ __('URL') }}</dt>
+                    <flux:icon icon="link" variant="outline" class="size-3.5" />
+                    <dd class="truncate font-mono" data-test="project-slug">
+                        /o/{{ $organization->slug }}/projects/{{ $project->slug }}
                     </dd>
                 </div>
             </dl>
-        </flux:card>
-    </div>
+        </div>
+    @endif
+
+    {{-- The work is the point of this page, so it leads. --}}
+    <livewire:pages::projects.tasks :project="$project" />
 
     @can('archive', $project)
         <flux:modal name="confirm-project-archive" class="max-w-lg">
@@ -333,6 +322,8 @@ new #[Title('Project')] class extends Component {
                     <flux:button
                         variant="danger"
                         wire:click="archiveProject"
+                        wire:loading.attr="disabled"
+                        wire:target="archiveProject"
                         data-test="confirm-archive-project-button"
                     >
                         {{ __('Archive project') }}

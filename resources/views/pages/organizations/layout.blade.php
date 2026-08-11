@@ -2,6 +2,9 @@
     'organization',
     'heading' => '',
     'subheading' => '',
+    // The trail names the page, which is not always what the page greets you
+    // with. Defaults to the heading.
+    'breadcrumbLabel' => null,
     // Optional intermediate breadcrumb, e.g. Projects when viewing one project.
     'parentLabel' => null,
     'parentHref' => null,
@@ -28,9 +31,13 @@
                     </flux:breadcrumbs.item>
                 @endif
 
-                <flux:breadcrumbs.item>{{ $heading }}</flux:breadcrumbs.item>
+                <flux:breadcrumbs.item>{{ $breadcrumbLabel ?? $heading }}</flux:breadcrumbs.item>
             </flux:breadcrumbs>
         </x-slot:breadcrumbs>
+
+        @isset($meta)
+            <x-slot:meta>{{ $meta }}</x-slot:meta>
+        @endisset
 
         @isset($actions)
             <x-slot:actions>{{ $actions }}</x-slot:actions>

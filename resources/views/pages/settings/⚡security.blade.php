@@ -75,7 +75,13 @@ new #[Title('Security settings')] class extends Component {
             />
 
             <div class="flex items-center gap-4">
-                <flux:button variant="primary" type="submit" data-test="update-password-button">
+                <flux:button
+                    variant="primary"
+                    type="submit"
+                    wire:loading.attr="disabled"
+                    wire:target="updatePassword"
+                    data-test="update-password-button"
+                >
                     {{ __('Save') }}
                 </flux:button>
             </div>
