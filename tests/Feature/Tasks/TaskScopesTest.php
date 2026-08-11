@@ -106,6 +106,78 @@ test('days overdue is zero for work that is not overdue', function () {
 
 /*
 |--------------------------------------------------------------------------
+| Due soon
+|--------------------------------------------------------------------------
+*/
+
+test('due soon covers today through the end of the window', function (int $daysAhead, bool $included) {
+    Task::factory()->for($this->project)->todo()->dueOn(today()->addDays($daysAhead)->toDateString())->create();
+
+    expect($this->project->tasks()->dueSoon(7)->count())->toBe($included ? 1 : 0);
+})->with([
+    'today' => [0, true],
+    'tomorrow' => [1, true],
+    'last day of the window' => [7, true],
+    'just outside the window' => [8, false],
+    'far future' => [60, false],
+]);
+
+test('due soon and overdue never count the same task', function () {
+    Task::factory()->for($this->project)->todo()->dueOn(today()->subDay()->toDateString())->create();
+    Task::factory()->for($this->project)->todo()->dueOn(today()->addDay()->toDateString())->create();
+
+    expect($this->project->tasks()->overdue()->count())->toBe(1)
+        ->and($this->project->tasks()->dueSoon(7)->count())->toBe(1);
+});
+
+test('due soon ignores finished and undated work', function () {
+    Task::factory()->for($this->project)->done()->dueOn(today()->addDay()->toDateString())->create();
+    Task::factory()->for($this->project)->todo()->create(['due_date' => null]);
+
+    expect($this->project->tasks()->dueSoon(7)->count())->toBe(0);
+});
+
+/*
+|--------------------------------------------------------------------------
+| Needs attention
+|--------------------------------------------------------------------------
+*/
+
+test('needs attention gathers late, imminent, and unowned open work', function () {
+    $member = memberWithRole($this->organization, OrganizationRole::Employee);
+
+    Task::factory()->for($this->project)->todo()->assignedTo($member)
+        ->dueOn(today()->subDay()->toDateString())->create();
+
+    Task::factory()->for($this->project)->todo()->assignedTo($member)
+        ->dueOn(today()->addDays(3)->toDateString())->create();
+
+    Task::factory()->for($this->project)->todo()->create(['assigned_to_user_id' => null, 'due_date' => null]);
+
+    expect($this->project->tasks()->needsAttention(7)->count())->toBe(3);
+});
+
+test('needs attention ignores owned work dated beyond the window', function () {
+    $member = memberWithRole($this->organization, OrganizationRole::Employee);
+
+    Task::factory()->for($this->project)->todo()->assignedTo($member)
+        ->dueOn(today()->addMonth()->toDateString())->create();
+
+    Task::factory()->for($this->project)->todo()->assignedTo($member)
+        ->create(['due_date' => null]);
+
+    expect($this->project->tasks()->needsAttention(7)->count())->toBe(0);
+});
+
+test('needs attention never includes finished work however late or unowned', function () {
+    Task::factory()->for($this->project)->done()
+        ->dueOn(today()->subYear()->toDateString())->create(['assigned_to_user_id' => null]);
+
+    expect($this->project->tasks()->needsAttention(7)->count())->toBe(0);
+});
+
+/*
+|--------------------------------------------------------------------------
 | Unassigned
 |--------------------------------------------------------------------------
 */

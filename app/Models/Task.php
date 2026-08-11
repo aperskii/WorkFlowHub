@@ -153,6 +153,41 @@ class Task extends Model
     }
 
     /**
+     * Scope the query to open tasks falling due within the given window.
+     *
+     * Work that is already late is excluded, so `overdue()` and `dueSoon()`
+     * never count the same task twice.
+     *
+     * @param  Builder<Task>  $query
+     */
+    #[Scope]
+    protected function dueSoon(Builder $query, int $withinDays = 7): void
+    {
+        $query->whereNotNull('due_date')
+            ->whereBetween('due_date', [today(), today()->addDays($withinDays)])
+            ->where('status', '!=', TaskStatus::Done);
+    }
+
+    /**
+     * Scope the query to open work a manager should look at.
+     *
+     * That is anything late, anything falling due shortly, or anything nobody
+     * has picked up. A due date comparison against NULL yields NULL rather than
+     * true, so undated work only qualifies by being unassigned.
+     *
+     * @param  Builder<Task>  $query
+     */
+    #[Scope]
+    protected function needsAttention(Builder $query, int $dueWithinDays = 7): void
+    {
+        $query->where('status', '!=', TaskStatus::Done)
+            ->where(function (Builder $query) use ($dueWithinDays) {
+                $query->where('due_date', '<=', today()->addDays($dueWithinDays))
+                    ->orWhereNull('assigned_to_user_id');
+            });
+    }
+
+    /**
      * Scope the query to tasks nobody is responsible for.
      *
      * @param  Builder<Task>  $query
