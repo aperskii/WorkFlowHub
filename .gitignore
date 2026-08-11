@@ -22,3 +22,21 @@ yarn-error.log
 /.nova
 /.vscode
 /.zed
+
+# Terraform
+#
+# State files record every attribute of every resource, including values AWS
+# generates and any secret passed into a resource, in plain text. They are also
+# environment-specific. Neither belongs in version control.
+.terraform/
+.terraform.lock.hcl.bak
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json

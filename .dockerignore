@@ -45,6 +45,12 @@ pint.json
 compose.yaml
 docs
 
+# Infrastructure code. None of it belongs in the application image, and each
+# Terraform working directory holds an ~865 MB provider binary under
+# .terraform/ plus state files that can contain generated credentials. Without
+# this the image grows from ~310 MB to over 3.5 GB and ships state with it.
+infra
+
 # docker/app holds this image's own nginx, FPM and supervisor configuration, so
 # it has to stay in the context. Only the local-dev Postgres bootstrap is cut.
 docker/postgres
