@@ -90,17 +90,26 @@ test('recent projects never include another organization\'s projects', function 
         ->assertDontSee('Theirs');
 });
 
-test('the dashboard keeps the member, owner, and role metrics', function () {
+test('the dashboard keeps the member count and shows the viewer\'s role', function () {
     $organization = Organization::factory()->create();
     $owner = memberWithRole($organization, OrganizationRole::Owner);
     memberWithRole($organization, OrganizationRole::Employee);
 
-    Livewire::actingAs($owner)
+    $component = Livewire::actingAs($owner)
         ->test('pages::organizations.dashboard', ['organization' => $organization])
         ->assertSee('Members')
-        ->assertSee('Owners')
-        ->assertSee('Your role')
         ->assertSee(OrganizationRole::Owner->label());
+
+    expect($component->instance()->memberCount())->toBe(2);
+});
+
+test('the owner count is no longer presented as a dashboard metric', function () {
+    $organization = Organization::factory()->create();
+    $owner = memberWithRole($organization, OrganizationRole::Owner);
+
+    Livewire::actingAs($owner)
+        ->test('pages::organizations.dashboard', ['organization' => $organization])
+        ->assertDontSee('Owners');
 });
 
 test('the dashboard shows the documented task metrics and nothing beyond them', function () {

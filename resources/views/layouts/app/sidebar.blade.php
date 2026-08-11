@@ -19,12 +19,12 @@
             <flux:sidebar.nav>
                 <flux:sidebar.group :heading="__('Workspace')" class="grid">
                     <flux:sidebar.item
-                        icon="home"
+                        icon="building-office-2"
                         :href="route('dashboard')"
                         :current="request()->routeIs('dashboard')"
                         wire:navigate
                     >
-                        {{ __('Dashboard') }}
+                        {{ __('Organizations') }}
                     </flux:sidebar.item>
                 </flux:sidebar.group>
 
@@ -36,7 +36,7 @@
                             :current="request()->routeIs('organizations.dashboard')"
                             wire:navigate
                         >
-                            {{ __('Overview') }}
+                            {{ __('Dashboard') }}
                         </flux:sidebar.item>
 
                         <flux:sidebar.item

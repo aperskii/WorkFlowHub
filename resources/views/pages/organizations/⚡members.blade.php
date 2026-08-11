@@ -365,95 +365,106 @@ new #[Title('Organization members')] class extends Component {
         </flux:callout>
     @enderror
 
-    <flux:table>
-        <flux:table.columns>
-            <flux:table.column>{{ __('Name') }}</flux:table.column>
-            <flux:table.column>{{ __('Email') }}</flux:table.column>
-            <flux:table.column>{{ __('Role') }}</flux:table.column>
-            <flux:table.column>{{ __('Joined') }}</flux:table.column>
-            <flux:table.column></flux:table.column>
-        </flux:table.columns>
+    {{-- Five columns including an email address do not fit a phone, so narrow
+         widths get cards instead. --}}
+    <div class="hidden sm:block">
+        <flux:table>
+            <flux:table.columns>
+                <flux:table.column>{{ __('Name') }}</flux:table.column>
+                <flux:table.column>{{ __('Email') }}</flux:table.column>
+                <flux:table.column>{{ __('Role') }}</flux:table.column>
+                <flux:table.column>{{ __('Joined') }}</flux:table.column>
+                <flux:table.column></flux:table.column>
+            </flux:table.columns>
 
-        <flux:table.rows>
-            @foreach ($this->memberships as $membership)
-                <flux:table.row :key="$membership->id">
-                    <flux:table.cell>
-                        <div class="flex items-center gap-3">
-                            <flux:avatar
-                                size="xs"
-                                :name="$membership->user->name"
-                                :initials="$membership->user->initials()"
+            <flux:table.rows>
+                @foreach ($this->memberships as $membership)
+                    <flux:table.row :key="$membership->id">
+                        <flux:table.cell>
+                            <div class="flex items-center gap-3">
+                                <flux:avatar
+                                    size="xs"
+                                    :name="$membership->user->name"
+                                    :initials="$membership->user->initials()"
+                                />
+
+                                <span class="truncate font-medium">{{ $membership->user->name }}</span>
+                            </div>
+                        </flux:table.cell>
+
+                        <flux:table.cell class="text-zinc-500 dark:text-zinc-400">
+                            {{ $membership->user->email }}
+                        </flux:table.cell>
+
+                        <flux:table.cell>
+                            <x-member-role-control
+                                :membership="$membership"
+                                :assignable-roles="$this->assignableRoles"
                             />
+                        </flux:table.cell>
 
-                            <span class="truncate font-medium">{{ $membership->user->name }}</span>
-                        </div>
-                    </flux:table.cell>
+                        <flux:table.cell class="whitespace-nowrap text-zinc-500 dark:text-zinc-400">
+                            {{ $membership->created_at->toFormattedDateString() }}
+                        </flux:table.cell>
 
-                    <flux:table.cell class="text-zinc-500 dark:text-zinc-400">
-                        {{ $membership->user->email }}
-                    </flux:table.cell>
-
-                    <flux:table.cell>
-                        @php
-                            $assignableForMember = collect($this->assignableRoles)
-                                ->filter(fn (OrganizationRole $role) => Gate::allows('updateRole', [$membership, $role]));
-                        @endphp
-
-                        @if ($assignableForMember->isNotEmpty())
-                            <flux:dropdown position="bottom" align="start">
+                        <flux:table.cell align="end">
+                            @can('delete', $membership)
                                 <flux:button
                                     size="sm"
-                                    variant="ghost"
-                                    icon-trailing="chevron-down"
-                                    :data-test="'change-role-'.$membership->id"
+                                    variant="subtle"
+                                    icon="trash"
+                                    wire:click="confirmRemoval({{ $membership->id }})"
+                                    :data-test="'remove-member-'.$membership->id"
                                 >
-                                    {{ $membership->role->label() }}
+                                    {{ __('Remove') }}
                                 </flux:button>
+                            @endcan
+                        </flux:table.cell>
+                    </flux:table.row>
+                @endforeach
+            </flux:table.rows>
+        </flux:table>
+    </div>
 
-                                <flux:menu>
-                                    @foreach ($assignableForMember as $role)
-                                        <flux:menu.item
-                                            wire:click="updateRole({{ $membership->id }}, '{{ $role->value }}')"
-                                            :disabled="$role === $membership->role"
-                                            :data-test="'assign-role-'.$membership->id.'-'.$role->value"
-                                        >
-                                            {{ $role->label() }}
-                                        </flux:menu.item>
-                                    @endforeach
-                                </flux:menu>
-                            </flux:dropdown>
-                        @else
-                            <flux:badge
-                                size="sm"
-                                inset="top bottom"
-                                :color="$membership->role === OrganizationRole::Owner ? 'lime' : 'zinc'"
-                            >
-                                {{ $membership->role->label() }}
-                            </flux:badge>
-                        @endif
-                    </flux:table.cell>
+    <div class="space-y-3 sm:hidden" data-test="member-card-list">
+        @foreach ($this->memberships as $membership)
+            <flux:card :key="'card-'.$membership->id" class="space-y-3">
+                <div class="flex items-start gap-3">
+                    <flux:avatar
+                        size="sm"
+                        :name="$membership->user->name"
+                        :initials="$membership->user->initials()"
+                    />
 
-                    <flux:table.cell class="whitespace-nowrap text-zinc-500 dark:text-zinc-400">
-                        {{ $membership->created_at->toFormattedDateString() }}
-                    </flux:table.cell>
+                    <div class="min-w-0 flex-1">
+                        <flux:text class="truncate font-medium">{{ $membership->user->name }}</flux:text>
+                        <flux:text class="truncate text-xs">{{ $membership->user->email }}</flux:text>
+                    </div>
+                </div>
 
-                    <flux:table.cell align="end">
-                        @can('delete', $membership)
-                            <flux:button
-                                size="sm"
-                                variant="subtle"
-                                icon="trash"
-                                wire:click="confirmRemoval({{ $membership->id }})"
-                                :data-test="'remove-member-'.$membership->id"
-                            >
-                                {{ __('Remove') }}
-                            </flux:button>
-                        @endcan
-                    </flux:table.cell>
-                </flux:table.row>
-            @endforeach
-        </flux:table.rows>
-    </flux:table>
+                <flux:separator variant="subtle" />
+
+                <div class="flex items-center justify-between gap-3">
+                    <x-member-role-control
+                        :membership="$membership"
+                        :assignable-roles="$this->assignableRoles"
+                    />
+
+                    @can('delete', $membership)
+                        <flux:button
+                            size="sm"
+                            variant="subtle"
+                            icon="trash"
+                            wire:click="confirmRemoval({{ $membership->id }})"
+                            :data-test="'remove-member-'.$membership->id"
+                        >
+                            {{ __('Remove') }}
+                        </flux:button>
+                    @endcan
+                </div>
+            </flux:card>
+        @endforeach
+    </div>
 
     @can('viewAny', [App\Models\Invitation::class, $organization])
         <div class="mt-10" data-test="pending-invitations">
@@ -471,9 +482,22 @@ new #[Title('Organization members')] class extends Component {
             @enderror
 
             @if ($this->invitations->isEmpty())
-                <flux:callout icon="envelope" data-test="invitations-empty-state">
-                    <flux:callout.text>{{ __('No pending invitations.') }}</flux:callout.text>
-                </flux:callout>
+                <x-empty-state
+                    icon="envelope"
+                    :heading="__('No pending invitations.')"
+                    :description="__('Invite a colleague by email and they will appear here until they accept. You choose the role they join with.')"
+                    data-test="invitations-empty-state"
+                >
+                    @can('create', [App\Models\Invitation::class, $organization])
+                        <x-slot:action>
+                            <flux:modal.trigger name="invite-member">
+                                <flux:button variant="primary" size="sm" icon="user-plus" data-test="empty-invite-member">
+                                    {{ __('Invite a member') }}
+                                </flux:button>
+                            </flux:modal.trigger>
+                        </x-slot:action>
+                    @endcan
+                </x-empty-state>
             @else
                 <flux:table>
                     <flux:table.columns>

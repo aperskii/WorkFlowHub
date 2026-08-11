@@ -95,7 +95,7 @@ new #[Title('Projects')] class extends Component {
         </x-slot:actions>
     @endcan
 
-    <div class="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div class="mb-6 grid gap-4 sm:grid-cols-2">
         <x-stat-tile
             :label="__('Total projects')"
             :value="$this->totalCount"
@@ -111,7 +111,7 @@ new #[Title('Projects')] class extends Component {
         />
     </div>
 
-    <div class="mb-4 flex items-end justify-between gap-4">
+    <div class="mb-4 flex items-end gap-3">
         <flux:select
             wire:model.live="status"
             :label="__('Status')"
@@ -124,33 +124,41 @@ new #[Title('Projects')] class extends Component {
                 <flux:select.option :value="$case->value">{{ $case->label() }}</flux:select.option>
             @endforeach
         </flux:select>
+
+        <flux:icon.loading
+            class="mb-2 size-4 text-zinc-400"
+            wire:loading
+            wire:target="status"
+            data-test="projects-loading"
+        />
     </div>
 
     @if ($this->projects->isEmpty())
-        <flux:callout icon="folder" data-test="projects-empty-state">
-            <flux:callout.heading>
-                {{ $this->totalCount === 0 ? __('No projects yet.') : __('No projects match this filter.') }}
-            </flux:callout.heading>
-
-            <flux:callout.text>
-                @if ($this->totalCount === 0)
-                    {{ __('Projects hold the work your team delivers for this organization.') }}
-                @else
-                    {{ __('Try a different status, or clear the filter to see everything.') }}
-                @endif
-            </flux:callout.text>
-
+        <x-empty-state
+            icon="folder"
+            :heading="$this->totalCount === 0 ? __('No projects yet.') : __('No projects match this filter.')"
+            :description="$this->totalCount === 0
+                ? __('Projects hold the work your team delivers for this organization. Each one has its own tasks, status, and history.')
+                : __('Try a different status, or clear the filter to see everything.')"
+            data-test="projects-empty-state"
+        >
             @can('create', [App\Models\Project::class, $organization])
                 @if ($this->totalCount === 0)
-                    <flux:callout.link
-                        :href="route('organizations.projects.create', $organization)"
-                        wire:navigate
-                    >
-                        {{ __('Create your first project') }}
-                    </flux:callout.link>
+                    <x-slot:action>
+                        <flux:button
+                            :href="route('organizations.projects.create', $organization)"
+                            variant="primary"
+                            size="sm"
+                            icon="plus"
+                            wire:navigate
+                            data-test="empty-create-project"
+                        >
+                            {{ __('Create your first project') }}
+                        </flux:button>
+                    </x-slot:action>
                 @endif
             @endcan
-        </flux:callout>
+        </x-empty-state>
     @else
         <flux:table data-test="project-list">
             <flux:table.columns>

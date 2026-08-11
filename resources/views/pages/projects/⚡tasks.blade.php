@@ -291,7 +291,7 @@ new class extends Component {
     }
 }; ?>
 
-<div class="mt-6" data-test="project-tasks">
+<div data-test="project-tasks">
     <div class="mb-4 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div class="flex items-center gap-3">
             <flux:heading size="lg">{{ __('Tasks') }}</flux:heading>
@@ -299,13 +299,20 @@ new class extends Component {
             <flux:badge size="sm" inset="top bottom" data-test="task-count">
                 {{ trans_choice('{0} No tasks|{1} :count task|[2,*] :count tasks', $this->taskCount, ['count' => $this->taskCount]) }}
             </flux:badge>
+
+            <flux:icon.loading
+                class="size-4 text-zinc-400"
+                wire:loading
+                wire:target="statusFilter"
+                data-test="tasks-loading"
+            />
         </div>
 
-        <div class="flex items-end gap-3">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
             <flux:select
                 wire:model.live="statusFilter"
                 :label="__('Status')"
-                class="max-w-44"
+                class="sm:max-w-44"
                 data-test="task-status-filter"
             >
                 <flux:select.option value="">{{ __('All statuses') }}</flux:select.option>
@@ -335,108 +342,160 @@ new class extends Component {
     @enderror
 
     @if ($this->tasks->isEmpty())
-        <flux:callout icon="clipboard-document-list" data-test="tasks-empty-state">
-            <flux:callout.heading>
-                {{ $this->taskCount === 0 ? __('No tasks yet.') : __('No tasks match this filter.') }}
-            </flux:callout.heading>
-
-            <flux:callout.text>
+        <x-empty-state
+            icon="clipboard-document-list"
+            :heading="$this->taskCount === 0 ? __('No tasks yet.') : __('No tasks match this filter.')"
+            :description="$this->taskCount === 0
+                ? __('Tasks break this project down into the work your team delivers, each with an owner, a priority, and a due date.')
+                : __('Try a different status, or clear the filter to see everything.')"
+            data-test="tasks-empty-state"
+        >
+            @can('create', [App\Models\Task::class, $project])
                 @if ($this->taskCount === 0)
-                    {{ __('Tasks break this project down into the work your team delivers.') }}
-                @else
-                    {{ __('Try a different status, or clear the filter to see everything.') }}
+                    <x-slot:action>
+                        <flux:button
+                            variant="primary"
+                            size="sm"
+                            icon="plus"
+                            wire:click="createTask"
+                            data-test="empty-create-task"
+                        >
+                            {{ __('Create your first task') }}
+                        </flux:button>
+                    </x-slot:action>
                 @endif
-            </flux:callout.text>
-        </flux:callout>
+            @endcan
+        </x-empty-state>
     @else
-        <flux:table data-test="task-list">
-            <flux:table.columns>
-                <flux:table.column>{{ __('Task') }}</flux:table.column>
-                <flux:table.column>{{ __('Status') }}</flux:table.column>
-                <flux:table.column>{{ __('Priority') }}</flux:table.column>
-                <flux:table.column>{{ __('Assignee') }}</flux:table.column>
-                <flux:table.column>{{ __('Due') }}</flux:table.column>
-                <flux:table.column></flux:table.column>
-            </flux:table.columns>
+        {{-- Six columns are unreadable on a phone, so narrow widths get cards. --}}
+        <div class="hidden sm:block">
+            <flux:table data-test="task-list">
+                <flux:table.columns>
+                    <flux:table.column>{{ __('Task') }}</flux:table.column>
+                    <flux:table.column>{{ __('Status') }}</flux:table.column>
+                    <flux:table.column>{{ __('Priority') }}</flux:table.column>
+                    <flux:table.column>{{ __('Assignee') }}</flux:table.column>
+                    <flux:table.column>{{ __('Due') }}</flux:table.column>
+                    <flux:table.column></flux:table.column>
+                </flux:table.columns>
 
-            <flux:table.rows>
-                @foreach ($this->tasks as $task)
-                    <flux:table.row :key="$task->id">
-                        <flux:table.cell class="font-medium">{{ $task->title }}</flux:table.cell>
+                <flux:table.rows>
+                    @foreach ($this->tasks as $task)
+                        <flux:table.row :key="$task->id">
+                            <flux:table.cell class="font-medium">{{ $task->title }}</flux:table.cell>
 
-                        <flux:table.cell>
-                            @can('changeStatus', $task)
-                                <flux:dropdown position="bottom" align="start">
+                            <flux:table.cell>
+                                <x-task-status-control :task="$task" />
+                            </flux:table.cell>
+
+                            <flux:table.cell>
+                                <flux:badge size="sm" inset="top bottom" :color="$task->priority->color()">
+                                    {{ $task->priority->label() }}
+                                </flux:badge>
+                            </flux:table.cell>
+
+                            <flux:table.cell>
+                                @if ($task->assignee)
+                                    <div class="flex items-center gap-2">
+                                        <flux:avatar
+                                            size="xs"
+                                            :name="$task->assignee->name"
+                                            :initials="$task->assignee->initials()"
+                                        />
+                                        <span class="truncate">{{ $task->assignee->name }}</span>
+                                    </div>
+                                @else
+                                    <flux:text class="text-sm">{{ __('Unassigned') }}</flux:text>
+                                @endif
+                            </flux:table.cell>
+
+                            <flux:table.cell class="whitespace-nowrap">
+                                @if ($task->isOverdue())
+                                    <flux:badge size="sm" inset="top bottom" color="red">
+                                        {{ trans_choice('{1} :count day late|[2,*] :count days late', $task->daysOverdue(), ['count' => $task->daysOverdue()]) }}
+                                    </flux:badge>
+                                @else
+                                    <span class="text-zinc-500 dark:text-zinc-400">
+                                        {{ $task->due_date?->toFormattedDateString() ?? '—' }}
+                                    </span>
+                                @endif
+                            </flux:table.cell>
+
+                            <flux:table.cell align="end">
+                                @can('update', $task)
                                     <flux:button
                                         size="sm"
-                                        variant="ghost"
-                                        icon-trailing="chevron-down"
-                                        :data-test="'change-task-status-'.$task->id"
+                                        variant="subtle"
+                                        icon="pencil-square"
+                                        wire:click="editTask({{ $task->id }})"
+                                        :data-test="'edit-task-'.$task->id"
                                     >
-                                        {{ $task->status->label() }}
+                                        {{ __('Edit') }}
                                     </flux:button>
+                                @endcan
+                            </flux:table.cell>
+                        </flux:table.row>
+                    @endforeach
+                </flux:table.rows>
+            </flux:table>
+        </div>
 
-                                    <flux:menu>
-                                        @foreach (TaskStatus::cases() as $case)
-                                            <flux:menu.item
-                                                wire:click="changeStatus({{ $task->id }}, '{{ $case->value }}')"
-                                                :disabled="$case === $task->status"
-                                                :data-test="'set-task-status-'.$task->id.'-'.$case->value"
-                                            >
-                                                {{ $case->label() }}
-                                            </flux:menu.item>
-                                        @endforeach
-                                    </flux:menu>
-                                </flux:dropdown>
-                            @else
-                                <flux:badge size="sm" inset="top bottom" :color="$task->status->color()">
-                                    {{ $task->status->label() }}
-                                </flux:badge>
-                            @endcan
-                        </flux:table.cell>
+        <div class="space-y-3 sm:hidden" data-test="task-card-list">
+            @foreach ($this->tasks as $task)
+                <flux:card :key="'card-'.$task->id" class="space-y-3">
+                    <div class="flex items-start justify-between gap-3">
+                        <flux:text class="min-w-0 font-medium">{{ $task->title }}</flux:text>
 
-                        <flux:table.cell>
-                            <flux:badge size="sm" inset="top bottom" :color="$task->priority->color()">
-                                {{ $task->priority->label() }}
+                        <flux:badge size="sm" inset="top bottom" :color="$task->priority->color()">
+                            {{ $task->priority->label() }}
+                        </flux:badge>
+                    </div>
+
+                    <div class="flex flex-wrap items-center gap-2">
+                        <x-task-status-control :task="$task" />
+
+                        @if ($task->isOverdue())
+                            <flux:badge size="sm" inset="top bottom" color="red">
+                                {{ trans_choice('{1} :count day late|[2,*] :count days late', $task->daysOverdue(), ['count' => $task->daysOverdue()]) }}
                             </flux:badge>
-                        </flux:table.cell>
+                        @elseif ($task->due_date)
+                            <flux:text class="text-xs">
+                                {{ __('Due :date', ['date' => $task->due_date->toFormattedDateString()]) }}
+                            </flux:text>
+                        @endif
+                    </div>
 
-                        <flux:table.cell>
-                            @if ($task->assignee)
-                                <div class="flex items-center gap-2">
-                                    <flux:avatar
-                                        size="xs"
-                                        :name="$task->assignee->name"
-                                        :initials="$task->assignee->initials()"
-                                    />
-                                    <span class="truncate">{{ $task->assignee->name }}</span>
-                                </div>
-                            @else
-                                <flux:text class="text-sm">{{ __('Unassigned') }}</flux:text>
-                            @endif
-                        </flux:table.cell>
+                    <flux:separator variant="subtle" />
 
-                        <flux:table.cell class="whitespace-nowrap text-zinc-500 dark:text-zinc-400">
-                            {{ $task->due_date?->toFormattedDateString() ?? '—' }}
-                        </flux:table.cell>
+                    <div class="flex items-center justify-between gap-3">
+                        @if ($task->assignee)
+                            <div class="flex min-w-0 items-center gap-2">
+                                <flux:avatar
+                                    size="xs"
+                                    :name="$task->assignee->name"
+                                    :initials="$task->assignee->initials()"
+                                />
+                                <flux:text class="truncate text-sm">{{ $task->assignee->name }}</flux:text>
+                            </div>
+                        @else
+                            <flux:text class="text-sm">{{ __('Unassigned') }}</flux:text>
+                        @endif
 
-                        <flux:table.cell align="end">
-                            @can('update', $task)
-                                <flux:button
-                                    size="sm"
-                                    variant="subtle"
-                                    icon="pencil-square"
-                                    wire:click="editTask({{ $task->id }})"
-                                    :data-test="'edit-task-'.$task->id"
-                                >
-                                    {{ __('Edit') }}
-                                </flux:button>
-                            @endcan
-                        </flux:table.cell>
-                    </flux:table.row>
-                @endforeach
-            </flux:table.rows>
-        </flux:table>
+                        @can('update', $task)
+                            <flux:button
+                                size="sm"
+                                variant="subtle"
+                                icon="pencil-square"
+                                wire:click="editTask({{ $task->id }})"
+                                :data-test="'edit-task-'.$task->id"
+                            >
+                                {{ __('Edit') }}
+                            </flux:button>
+                        @endcan
+                    </div>
+                </flux:card>
+            @endforeach
+        </div>
     @endif
 
     @can('create', [App\Models\Task::class, $project])
@@ -493,7 +552,13 @@ new class extends Component {
                         {{ __('Cancel') }}
                     </flux:button>
 
-                    <flux:button variant="primary" type="submit" data-test="save-task-button">
+                    <flux:button
+                        variant="primary"
+                        type="submit"
+                        wire:loading.attr="disabled"
+                        wire:target="saveTask"
+                        data-test="save-task-button"
+                    >
                         {{ __('Save task') }}
                     </flux:button>
                 </div>

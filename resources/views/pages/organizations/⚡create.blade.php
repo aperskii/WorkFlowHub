@@ -31,7 +31,7 @@ new #[Title('Create organization')] class extends Component {
         <x-slot:breadcrumbs>
             <flux:breadcrumbs>
                 <flux:breadcrumbs.item :href="route('dashboard')" wire:navigate>
-                    {{ __('Dashboard') }}
+                    {{ __('Organizations') }}
                 </flux:breadcrumbs.item>
 
                 <flux:breadcrumbs.item>{{ __('Create organization') }}</flux:breadcrumbs.item>

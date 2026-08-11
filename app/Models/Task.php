@@ -87,6 +87,34 @@ class Task extends Model
     }
 
     /**
+     * Determine whether this task's due date has passed while it is still open.
+     *
+     * Overdue is always derived from the due date and the status; it is never
+     * stored, so it cannot drift away from the task's real state.
+     */
+    public function isOverdue(): bool
+    {
+        return $this->due_date !== null
+            && $this->status !== TaskStatus::Done
+            && $this->due_date->isBefore(today());
+    }
+
+    /**
+     * Get the number of whole days this task is past its due date.
+     *
+     * Returns zero when the task is not overdue, so callers never have to guard
+     * the sign of the result.
+     */
+    public function daysOverdue(): int
+    {
+        if (! $this->isOverdue()) {
+            return 0;
+        }
+
+        return (int) $this->due_date->startOfDay()->diffInDays(today());
+    }
+
+    /**
      * Scope the query to tasks that are not yet done.
      *
      * @param  Builder<Task>  $query
@@ -106,5 +134,43 @@ class Task extends Model
     protected function completed(Builder $query): void
     {
         $query->where('status', TaskStatus::Done);
+    }
+
+    /**
+     * Scope the query to open tasks whose due date has already passed.
+     *
+     * A finished task is never overdue, so this deliberately implies `open()`
+     * rather than composing with it.
+     *
+     * @param  Builder<Task>  $query
+     */
+    #[Scope]
+    protected function overdue(Builder $query): void
+    {
+        $query->whereNotNull('due_date')
+            ->where('due_date', '<', today())
+            ->where('status', '!=', TaskStatus::Done);
+    }
+
+    /**
+     * Scope the query to tasks nobody is responsible for.
+     *
+     * @param  Builder<Task>  $query
+     */
+    #[Scope]
+    protected function unassigned(Builder $query): void
+    {
+        $query->whereNull('assigned_to_user_id');
+    }
+
+    /**
+     * Scope the query to tasks assigned to the given user.
+     *
+     * @param  Builder<Task>  $query
+     */
+    #[Scope]
+    protected function assignedTo(Builder $query, User $user): void
+    {
+        $query->where('assigned_to_user_id', $user->id);
     }
 }

@@ -42,8 +42,8 @@ new class extends Component {
 
 <div class="w-full">
     <x-page-header
-        :title="__('Dashboard')"
-        :description="__('Your organizations across WorkFlowHub')"
+        :title="__('Your organizations')"
+        :description="__('Every organization you belong to across WorkFlowHub')"
     >
         <x-slot:actions>
             <flux:button
@@ -59,13 +59,25 @@ new class extends Component {
     </x-page-header>
 
     @if ($this->memberships->isEmpty())
-        <flux:callout icon="building-office-2" data-test="organizations-empty-state">
-            <flux:callout.heading>{{ __('You don\'t belong to any organizations yet.') }}</flux:callout.heading>
-
-            <flux:callout.text>
-                {{ __('An organization is where your projects, clients, and team members live. Create one to get started — you\'ll become its owner.') }}
-            </flux:callout.text>
-        </flux:callout>
+        <x-empty-state
+            icon="building-office-2"
+            :heading="__('You don\'t belong to any organizations yet.')"
+            :description="__('An organization is where your projects, tasks, and team members live. Create one to get started — you\'ll become its owner.')"
+            data-test="organizations-empty-state"
+        >
+            <x-slot:action>
+                <flux:button
+                    :href="route('organizations.create')"
+                    variant="primary"
+                    size="sm"
+                    icon="plus"
+                    wire:navigate
+                    data-test="empty-create-organization"
+                >
+                    {{ __('Create your first organization') }}
+                </flux:button>
+            </x-slot:action>
+        </x-empty-state>
     @else
         <div class="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <x-stat-tile :label="__('Organizations')" :value="$this->memberships->count()" icon="building-office-2" />
@@ -88,11 +100,7 @@ new class extends Component {
                             </flux:text>
                         </div>
 
-                        <flux:badge
-                            size="sm"
-                            inset="top bottom"
-                            :color="$membership->role === App\Enums\OrganizationRole::Owner ? 'lime' : 'zinc'"
-                        >
+                        <flux:badge size="sm" inset="top bottom" :color="$membership->role->color()">
                             {{ $membership->role->label() }}
                         </flux:badge>
                     </div>

@@ -215,7 +215,10 @@ new #[Title('Project')] class extends Component {
         </flux:callout>
     @endif
 
-    <div class="grid gap-6 lg:grid-cols-3">
+    {{-- The work is the point of this page, so it leads. Context follows below. --}}
+    <livewire:pages::projects.tasks :project="$project" />
+
+    <div class="mt-6 grid gap-6 lg:grid-cols-3">
         <div class="lg:col-span-2">
             @if ($editing)
                 <flux:card class="space-y-6" data-test="project-edit-form">
@@ -232,7 +235,13 @@ new #[Title('Project')] class extends Component {
                         <flux:textarea wire:model="description" :label="__('Description')" rows="4" />
 
                         <div class="flex items-center gap-3">
-                            <flux:button variant="primary" type="submit" data-test="save-project-button">
+                            <flux:button
+                                variant="primary"
+                                type="submit"
+                                wire:loading.attr="disabled"
+                                wire:target="updateProject"
+                                data-test="save-project-button"
+                            >
                                 {{ __('Save changes') }}
                             </flux:button>
 
@@ -304,8 +313,6 @@ new #[Title('Project')] class extends Component {
             </dl>
         </flux:card>
     </div>
-
-    <livewire:pages::projects.tasks :project="$project" />
 
     @can('archive', $project)
         <flux:modal name="confirm-project-archive" class="max-w-lg">

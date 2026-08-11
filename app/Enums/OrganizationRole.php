@@ -21,6 +21,18 @@ enum OrganizationRole: string
     }
 
     /**
+     * Get the Flux badge colour used to present the role.
+     */
+    public function color(): string
+    {
+        return match ($this) {
+            self::Owner => 'lime',
+            self::Manager => 'sky',
+            self::Employee => 'zinc',
+        };
+    }
+
+    /**
      * Determine whether the role may update or delete the organization itself.
      */
     public function canManageOrganization(): bool
