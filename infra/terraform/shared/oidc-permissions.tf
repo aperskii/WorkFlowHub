@@ -306,9 +306,40 @@ data "aws_iam_policy_document" "ci_registry_identity" {
       "ecr:DescribeImages",
       "ecr:DescribeRepositories",
       "ecr:ListImages",
+
+      # Read by the aws_ecr_repository data source in the dev configuration,
+      # which reads tags as part of resolving the repository. Its absence failed
+      # the first automated apply before any resource was created.
+      "ecr:ListTagsForResource",
     ]
 
     resources = [aws_ecr_repository.app.arn]
+  }
+
+  # Attaching a managed policy makes Terraform read it first. These are
+  # read-only and apply to AWS's own catalogue of managed policies, which is
+  # world-readable in any case; the account's own policies are not included.
+  statement {
+    sid    = "ReadAwsManagedPolicies"
+    effect = "Allow"
+
+    actions = [
+      "iam:GetPolicy",
+      "iam:GetPolicyVersion",
+      "iam:ListPolicyVersions",
+    ]
+
+    resources = ["arn:aws:iam::aws:policy/*"]
+  }
+
+  # The database is encrypted with the AWS-managed key for RDS. Creating the
+  # instance does not require permission on that key, but describing it does,
+  # and Terraform reads the key when it refreshes the instance.
+  statement {
+    sid       = "DescribeEncryptionKeys"
+    effect    = "Allow"
+    actions   = ["kms:DescribeKey"]
+    resources = ["*"]
   }
 
   # Confined to the task roles the dev environment creates. The role cannot
