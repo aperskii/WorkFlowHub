@@ -80,6 +80,14 @@ data "aws_iam_policy_document" "ci_network" {
       "ec2:DescribeAvailabilityZones",
       "ec2:DescribeNetworkInterfaces",
       "ec2:DescribeAccountAttributes",
+
+      # Read by destroy.yml's teardown check, not by Terraform — this
+      # configuration creates neither volumes nor addresses. They are checked
+      # precisely because nothing here manages them: an orphaned volume or an
+      # unassociated Elastic IP is exactly the kind of leftover that Terraform
+      # reporting an empty state would not catch, and both bill hourly.
+      "ec2:DescribeVolumes",
+      "ec2:DescribeAddresses",
     ]
 
     resources = ["*"]
@@ -122,6 +130,12 @@ data "aws_iam_policy_document" "ci_data" {
       # PostgreSQL version at plan time.
       "rds:DescribeDBEngineVersions",
       "rds:DescribeOrderableDBInstanceOptions",
+
+      # Read by destroy.yml's teardown check, not by Terraform. A manual
+      # snapshot outlives the instance it came from and bills for its storage
+      # indefinitely, so "the database is gone" is not the same question as
+      # "nothing from the database is still costing money".
+      "rds:DescribeDBSnapshots",
     ]
 
     resources = ["*"]
@@ -137,6 +151,11 @@ data "aws_iam_policy_document" "ci_data" {
       "secretsmanager:DescribeSecret",
       "secretsmanager:PutSecretValue",
       "secretsmanager:GetSecretValue",
+
+      # Read after every create. A secret without a resource policy still has
+      # one to read — the API returns an empty document rather than an error —
+      # so the provider always calls this.
+      "secretsmanager:GetResourcePolicy",
       "secretsmanager:TagResource",
       "secretsmanager:UntagResource",
     ]
@@ -157,6 +176,19 @@ data "aws_iam_policy_document" "ci_data" {
     resources = ["*"]
   }
 
+  # Both are list-type APIs that take a name *prefix* as a request parameter
+  # rather than acting on a named resource, so neither supports resource-level
+  # permissions: scoping them to an ARN denies them outright, which is exactly
+  # how the first automated deployment failed. The pairing with the scoped
+  # statement above is deliberate — enumerating log groups is permitted
+  # account-wide, while creating, deleting, and reading from one is not.
+  statement {
+    sid       = "ListLogGroups"
+    effect    = "Allow"
+    actions   = ["logs:DescribeLogGroups"]
+    resources = ["*"]
+  }
+
   statement {
     sid    = "ManageTaskLogs"
     effect = "Allow"
@@ -164,7 +196,6 @@ data "aws_iam_policy_document" "ci_data" {
     actions = [
       "logs:CreateLogGroup",
       "logs:DeleteLogGroup",
-      "logs:DescribeLogGroups",
       "logs:PutRetentionPolicy",
       "logs:DeleteRetentionPolicy",
       "logs:TagResource",
@@ -227,6 +258,12 @@ data "aws_iam_policy_document" "ci_compute" {
       "ecs:TagResource",
       "ecs:UntagResource",
       "ecs:ListTagsForResource",
+
+      # Read by destroy.yml's teardown check. Enumerating clusters is a
+      # different question from describing one by name: the check has to be
+      # able to discover a cluster it does not know about, or it cannot
+      # honestly report that none remain.
+      "ecs:ListClusters",
     ]
 
     resources = ["*"]
@@ -254,6 +291,7 @@ data "aws_iam_policy_document" "ci_compute" {
       "elasticloadbalancing:CreateListener",
       "elasticloadbalancing:DeleteListener",
       "elasticloadbalancing:DescribeListeners",
+      "elasticloadbalancing:DescribeListenerAttributes",
       "elasticloadbalancing:ModifyListener",
 
       "elasticloadbalancing:AddTags",

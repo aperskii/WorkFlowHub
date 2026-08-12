@@ -110,10 +110,23 @@ jobs:
         timeout-minutes: 5
         run: |
           fail=0
+
+          # A failed call and a non-zero count both fail the step, but they are
+          # different problems and must not look alike: one means resources are
+          # still running, the other means this check cannot see whether they
+          # are. Reporting "unknown" as though it were "some" sends you looking
+          # for a resource that may not exist. The stderr is kept and printed
+          # because the cause is almost always a named missing IAM action.
           check() {
-            count="$(eval "$2" 2>/dev/null || echo ERROR)"
-            echo "  ${1}: ${count}"
-            [ "$count" = "0" ] || fail=1
+            if ! output="$(eval "$2" 2>&1)"; then
+              echo "  ${1}: UNKNOWN - the query failed"
+              echo "      ${output}"
+              fail=1
+              return
+            fi
+
+            echo "  ${1}: ${output}"
+            [ "$output" = "0" ] || fail=1
           }
 
           check "RDS instances"    "aws rds describe-db-instances --query 'length(DBInstances)' --output text"
@@ -127,7 +140,7 @@ jobs:
           check "Elastic IPs"      "aws ec2 describe-addresses --query 'length(Addresses)' --output text"
 
           if [ "$fail" -ne 0 ]; then
-            echo "::error::Resources remain after the destroy. Check the list above."
+            echo "::error::Teardown is unverified: something above is non-zero or could not be queried."
             exit 1
           fi
 
