@@ -338,7 +338,8 @@ jobs:
             echo "| URL | ${APP_URL} |"
             echo
             echo "The environment bills by the hour while it runs."
-            echo "Tear it down with \`terraform destroy\` in \`infra/terraform/dev\`."
+            echo "Tear it down by running the [destroy workflow](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/workflows/destroy.yml),"
+            echo "which needs the same approval and verifies afterwards that nothing is left."
           } >> "$GITHUB_STEP_SUMMARY"
 
       # A failed deployment leaves the service scaled up and cycling tasks,
