@@ -28,7 +28,10 @@ test('the project ability matrix is enforced for every organization role', funct
         ->and($actor->can('create', [Project::class, $organization]))->toBe($canManage)
         ->and($actor->can('update', $project))->toBe($canManage)
         ->and($actor->can('changeStatus', $project))->toBe($canManage)
-        ->and($actor->can('archive', $project))->toBe($canManage);
+        ->and($actor->can('archive', $project))->toBe($canManage)
+        // Running an AI risk analysis spends money, so it tracks management
+        // rights rather than read access (ADR-011).
+        ->and($actor->can('analyzeRisk', $project))->toBe($canManage);
 })->with([
     'owner manages everything' => [OrganizationRole::Owner, true, true],
     'manager manages everything' => [OrganizationRole::Manager, true, true],
@@ -45,7 +48,8 @@ test('a user with no membership is denied every project ability', function () {
         ->and($outsider->can('create', [Project::class, $organization]))->toBeFalse()
         ->and($outsider->can('update', $project))->toBeFalse()
         ->and($outsider->can('changeStatus', $project))->toBeFalse()
-        ->and($outsider->can('archive', $project))->toBeFalse();
+        ->and($outsider->can('archive', $project))->toBeFalse()
+        ->and($outsider->can('analyzeRisk', $project))->toBeFalse();
 });
 
 test('a guest is denied every project ability', function () {
@@ -78,6 +82,7 @@ test('an owner of one organization has no rights over another organization\'s pr
         ->and($ownerOfA->can('update', $projectInB))->toBeFalse()
         ->and($ownerOfA->can('changeStatus', $projectInB))->toBeFalse()
         ->and($ownerOfA->can('archive', $projectInB))->toBeFalse()
+        ->and($ownerOfA->can('analyzeRisk', $projectInB))->toBeFalse()
         ->and($ownerOfA->can('viewAny', [Project::class, $organizationB]))->toBeFalse()
         ->and($ownerOfA->can('create', [Project::class, $organizationB]))->toBeFalse();
 });

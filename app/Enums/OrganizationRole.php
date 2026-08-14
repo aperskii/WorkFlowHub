@@ -96,4 +96,20 @@ enum OrganizationRole: string
             self::Employee => false,
         };
     }
+
+    /**
+     * Determine whether the role may run an AI risk analysis on a project.
+     *
+     * This gates spend rather than access: an analysis is a billed call to an
+     * external API (ADR-011). It is kept separate from project management
+     * because the question it answers is "who may spend money", which can change
+     * without any change to who may edit or archive a project.
+     */
+    public function canAnalyzeProjectRisk(): bool
+    {
+        return match ($this) {
+            self::Owner, self::Manager => true,
+            self::Employee => false,
+        };
+    }
 }

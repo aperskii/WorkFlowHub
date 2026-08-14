@@ -35,4 +35,15 @@ return [
         ],
     ],
 
+    /*
+    | Anthropic's Messages API, called directly over HTTP (ADR-011). An absent
+    | key disables the feature rather than breaking the page, so the application
+    | still runs in environments where no key has been provisioned.
+    */
+    'anthropic' => [
+        'key' => env('ANTHROPIC_API_KEY'),
+        'model' => env('ANTHROPIC_MODEL', 'claude-haiku-4-5'),
+        'timeout' => (int) env('ANTHROPIC_TIMEOUT', 10),
+    ],
+
 ];

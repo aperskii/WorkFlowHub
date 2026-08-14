@@ -1,15 +1,24 @@
 <?php
 
+use App\Actions\Projects\AnalyzeProjectRisk;
 use App\Enums\ProjectStatus;
 use App\Models\Organization;
 use App\Models\Project;
 use Flux\Flux;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Locked;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 
 new #[Title('Project')] class extends Component {
+    /**
+     * The number of risk analyses one member may run against an organization in
+     * a minute. Each analysis is a paid API call, so the button is throttled to
+     * a handful of deliberate presses rather than whatever a held mouse produces.
+     */
+    private const int ANALYSES_PER_MINUTE = 5;
+
     /**
      * The route-bound organization and project. Both locked so the browser can
      * never swap the tenant or the record on a subsequent request.
@@ -25,6 +34,15 @@ new #[Title('Project')] class extends Component {
     public string $name = '';
 
     public string $description = '';
+
+    /**
+     * The most recent risk assessment, and the reason the last attempt produced
+     * none. Both are request-scoped: an assessment is computed only when asked
+     * for and is never persisted.
+     */
+    public ?string $riskAssessment = null;
+
+    public ?string $riskError = null;
 
     /**
      * Mount the component.
@@ -129,6 +147,63 @@ new #[Title('Project')] class extends Component {
     }
 
     /**
+     * Ask the AI copilot whether this project looks at risk.
+     *
+     * Gated on `analyzeRisk`, which is stricter than the `view` ability guarding
+     * the page: an analysis is a billed API call, so it is limited to the roles
+     * that may manage the organization's work. Runs only on this click; nothing
+     * analyses a project on page load.
+     */
+    public function analyzeRisk(AnalyzeProjectRisk $action): void
+    {
+        $project = $this->resolveProject();
+
+        $this->authorize('analyzeRisk', $project);
+
+        $this->riskAssessment = null;
+        $this->riskError = null;
+
+        $throttleKey = $this->riskThrottleKey();
+
+        if (RateLimiter::tooManyAttempts($throttleKey, self::ANALYSES_PER_MINUTE)) {
+            $seconds = RateLimiter::availableIn($throttleKey);
+
+            $this->riskError = trans_choice(
+                '{1}That is a lot of analyses at once. Try again in :count second.'
+                    .'|[2,*]That is a lot of analyses at once. Try again in :count seconds.',
+                $seconds,
+                ['count' => $seconds],
+            );
+
+            return;
+        }
+
+        RateLimiter::hit($throttleKey);
+
+        $assessment = $action->handle($project);
+
+        if ($assessment === null) {
+            $this->riskError = __('We could not analyze this project right now. Please try again in a moment.');
+
+            return;
+        }
+
+        $this->riskAssessment = $assessment;
+    }
+
+    /**
+     * Build the throttle key for risk analysis.
+     *
+     * Scoped to the member within the organization: one person cannot exhaust
+     * their colleagues' budget, and cannot multiply their own by holding several
+     * projects open, because every project in the tenant shares the key.
+     */
+    private function riskThrottleKey(): string
+    {
+        return 'project-risk-analysis:'.auth()->id().':'.$this->organization->id;
+    }
+
+    /**
      * Re-resolve the project through the route-bound organization, so a tampered
      * identifier can never reach a project belonging to another tenant.
      */
@@ -161,6 +236,23 @@ new #[Title('Project')] class extends Component {
     </x-slot:meta>
 
     <x-slot:actions>
+        {{-- Hidden from members who may not spend, and only ever run on click:
+             an assessment costs money, so nothing triggers it on page load. The
+             button is cosmetic — the action authorizes again server-side. --}}
+        @can('analyzeRisk', $project)
+            <flux:button
+                size="sm"
+                variant="subtle"
+                icon="sparkles"
+                wire:click="analyzeRisk"
+                wire:loading.attr="disabled"
+                wire:target="analyzeRisk"
+                data-test="analyze-risk-button"
+            >
+                {{ __('Analyze risk') }}
+            </flux:button>
+        @endcan
+
         @can('changeStatus', $project)
             <flux:dropdown position="bottom" align="end">
                 <flux:button
@@ -299,6 +391,36 @@ new #[Title('Project')] class extends Component {
             </dl>
         </div>
     @endif
+
+    {{-- Risk analysis sits above the tasks: it is a read on the work below it,
+         and it only appears once someone has asked for it. --}}
+    <div wire:loading wire:target="analyzeRisk" class="mb-5" role="status">
+        <x-panel :title="__('Risk assessment')">
+            <p class="flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400">
+                <flux:icon.loading class="size-4" />
+                <span data-test="risk-loading">{{ __('Analyzing this project…') }}</span>
+            </p>
+        </x-panel>
+    </div>
+
+    <div wire:loading.remove wire:target="analyzeRisk">
+        @if (filled($riskError))
+            <flux:callout variant="danger" icon="exclamation-triangle" class="mb-5" data-test="risk-error">
+                <flux:callout.text>{{ $riskError }}</flux:callout.text>
+            </flux:callout>
+        @endif
+
+        @if (filled($riskAssessment))
+            <x-panel
+                class="mb-5"
+                :title="__('Risk assessment')"
+                :description="__('Generated on demand from this project\'s task counts. Not saved.')"
+                data-test="risk-assessment"
+            >
+                <p class="text-sm whitespace-pre-line text-zinc-600 dark:text-zinc-300">{{ $riskAssessment }}</p>
+            </x-panel>
+        @endif
+    </div>
 
     {{-- The work is the point of this page, so it leads. --}}
     <livewire:pages::projects.tasks :project="$project" />

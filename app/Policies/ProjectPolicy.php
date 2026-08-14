@@ -58,4 +58,15 @@ class ProjectPolicy
     {
         return $user->membershipFor($project->organization)?->role->canManageProjects() ?? false;
     }
+
+    /**
+     * Determine whether the user can run an AI risk analysis on the project.
+     *
+     * Stricter than `view` on purpose: every analysis is a billed call to an
+     * external API, so the ability gates spend rather than access (ADR-011).
+     */
+    public function analyzeRisk(User $user, Project $project): bool
+    {
+        return $user->membershipFor($project->organization)?->role->canAnalyzeProjectRisk() ?? false;
+    }
 }
