@@ -225,9 +225,20 @@ resource "aws_ecs_service" "app" {
 # entrypoint still runs first, so configuration is cached and the APP_KEY guard
 # still applies before artisan is reached.
 #
-# Deliberately a separate task definition rather than a command override at
-# run-task time: the intent is recorded in the infrastructure rather than in
-# whichever shell command someone happens to type.
+# The migration command itself is deliberately fixed here rather than passed at
+# run-task time. Applying a schema change is the one operation that should never
+# vary by invocation: pinning it in Terraform means the thing that runs against
+# the database is reviewed, versioned, and identical every time, and cannot be
+# altered by whichever command someone happens to type at a terminal.
+#
+# That is an argument about ad hoc invocation, not about command overrides as
+# such. Other one-off tasks may reuse this definition and override the command,
+# provided the override is itself a named step in a reviewed, version-controlled
+# workflow — the "Seed demo data" step in .github/workflows/deploy.yml is one
+# (ADR-012 §7). The intent is still recorded in reviewed code; it just lives in
+# the workflow file rather than here. Sharing this definition is what keeps the
+# image, environment, secrets, log configuration, and IAM roles from drifting
+# apart across those tasks.
 resource "aws_ecs_task_definition" "migrate" {
   family = "workflowhub-${var.environment}-migrate"
 

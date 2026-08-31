@@ -254,6 +254,72 @@ jobs:
             --query 'events[].message' --output text \
             | tr '\t' '\n' || echo "(log stream not available yet)"
 
+      # A migrated database is an empty one, and an empty demo environment has
+      # nothing to sign in with — there is no registration step in front of a
+      # reviewer, and the accounts used locally were never in version control.
+      # This is what makes the deployed environment showable.
+      #
+      # It reuses the migrate task definition rather than adding a Terraform one
+      # of its own, overriding only the container command. Everything that is
+      # awkward to get right — the image, the environment, the Secrets Manager
+      # references, the log configuration, the task roles — is therefore shared
+      # with migrations and cannot drift away from them. The task definition's
+      # own comment argues for recording intent in infrastructure rather than in
+      # a typed command; the intent is recorded here instead, in a named step in
+      # a version-controlled workflow, which is the same audit trail.
+      #
+      # A failure stops the deployment. An environment that came up but cannot
+      # be logged into is the exact failure this step exists to prevent, so it
+      # should be loud rather than discovered during a demo.
+      - name: Seed demo data
+        # Same shape as the migration gate above: Fargate cold start plus the seeder.
+        timeout-minutes: 15
+        id: seed
+        run: |
+          task_arn="$(aws ecs run-task \
+            --cluster "$CLUSTER" \
+            --task-definition "$MIGRATE_TASK" \
+            --launch-type FARGATE \
+            --network-configuration "$NETWORK_CONFIG" \
+            --started-by "gha-${GITHUB_RUN_ID}" \
+            --overrides '{"containerOverrides":[{"name":"migrate","command":["php","artisan","db:seed","--class=DemoSeeder","--force"]}]}' \
+            --query 'tasks[0].taskArn' --output text)"
+
+          if [ -z "$task_arn" ] || [ "$task_arn" = "None" ]; then
+            echo "::error::Failed to start the demo data seeding task."
+            exit 1
+          fi
+
+          task_id="${task_arn##*/}"
+          echo "SEED_TASK_ID=${task_id}" >> "$GITHUB_ENV"
+          echo "seeding task ${task_id}"
+
+          aws ecs wait tasks-stopped --cluster "$CLUSTER" --tasks "$task_id"
+
+          exit_code="$(aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$task_id" \
+            --query 'tasks[0].containers[0].exitCode' --output text)"
+          reason="$(aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$task_id" \
+            --query 'tasks[0].stoppedReason' --output text)"
+
+          echo "exit code: ${exit_code} (${reason})"
+
+          if [ "$exit_code" != "0" ]; then
+            echo "::error::Demo data seeding failed with exit code ${exit_code}: ${reason}"
+            exit 1
+          fi
+
+      # The container is still named "migrate", so the seeding run writes to the
+      # same log stream prefix as the migration above.
+      - name: Seeding output
+        if: always() && env.SEED_TASK_ID != ''
+        run: |
+          aws logs get-log-events \
+            --log-group-name "$LOG_GROUP" \
+            --log-stream-name "ecs/migrate/${SEED_TASK_ID}" \
+            --start-from-head \
+            --query 'events[].message' --output text \
+            | tr '\t' '\n' || echo "(log stream not available yet)"
+
       # Only reached when migrations succeeded. force-new-deployment makes the
       # service pull :dev again rather than reuse the image it already has.
       - name: Release the new version

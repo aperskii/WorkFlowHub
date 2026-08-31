@@ -220,7 +220,26 @@ releases it.
 2. Approve the `aws-dev` gate when the run pauses
 3. Wait roughly six to seven minutes
 4. The run summary prints the load balancer's URL
-5. **Actions → destroy → Run workflow**, approve again
+5. Sign in with one of the demo accounts below
+6. **Actions → destroy → Run workflow**, approve again
+
+The deploy seeds a demo organization after migrating, so there is a populated product to
+look at rather than an empty login form. Four projects with a deliberate spread of health,
+a few dozen tasks, and one outstanding invitation, all signed in to with:
+
+| Email | Password | Role |
+| --- | --- | --- |
+| `owner@smoke.test` | `password` | Owner |
+| `manager@smoke.test` | `password` | Manager |
+| `employee@smoke.test` | `password` | Employee |
+
+The password is deliberately public. That environment holds nothing but seeded fixtures
+and is destroyed after each demo, and the seeder that creates these accounts has to be
+asked for by name (`php artisan db:seed --class=DemoSeeder`) — it is not reachable from
+the default seeder, so it cannot run anywhere by accident. The reasoning is in
+[ADR-012](docs/decisions/ADR-012-demo-environment-seeding.md). Open **Harborview
+Onboarding Revamp** and press *Analyze risk* to see the AI assessment against a project
+that is genuinely in trouble.
 
 This needs write access to the repository, so it is something to be walked through rather
 than something a visitor can trigger. The deployment ends by requesting `/up`, `/up/ready`,
