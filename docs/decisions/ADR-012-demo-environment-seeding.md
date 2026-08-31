@@ -48,10 +48,37 @@ does not exist anywhere it has not been carried by hand, and nobody finds out
 until it is missing. A dump additionally breaks on the next migration, silently
 and in a way no test catches.
 
-The scenario uses the existing model factories where they carry real defaults —
-`UserFactory` is the one place in the project that knows a user needs a hashed
-password and a verified address — and writes the domain data explicitly, because
-the whole point of the fixture is that the numbers are chosen rather than random.
+Every record is written explicitly rather than through a model factory. That is
+the opposite of the usual advice in this project, and it is worth saying why.
+
+The first version did use `User::factory()`, on the reasoning that the factory is
+the one place that knows a user needs a hashed password and a verified address.
+It passed the whole suite and then failed on the first real deploy:
+
+```
+Call to undefined function Database\Factories\fake()
+  at database/factories/UserFactory.php:28
+```
+
+Factories call `fake()`, and Laravel only defines that helper when
+`fakerphp/faker` is loaded. Faker is a `require-dev` package, the image is built
+with `composer install --no-dev`, and `Factory::create()` evaluates
+`definition()` before applying any override — so the call happened even though
+the seeder supplied its own name and email.
+
+**This seeder is the only application code that runs in the container but never
+in a browser request**, which makes it the only place a dev-only dependency can
+hide. Factories exist for tests, where dev dependencies are guaranteed; this
+runs in production. Nothing here may reach for one, and a test asserts that
+against the source, because the suite itself always has Faker available and so
+could never catch it by running the seeder.
+
+What the factory was providing is written out instead: `forceFill` for the
+password (through the model's `hashed` cast) and `markEmailAsVerified()` for the
+verification timestamp, which is outside the model's `#[Fillable]` list and would
+otherwise be dropped in silence. The domain data was always going to be explicit
+anyway — the whole point of the fixture is that the numbers are chosen rather
+than random.
 
 ### 2. A Separate Seeder, Not Part of `DatabaseSeeder`
 
@@ -196,6 +223,13 @@ invitation; and that `DatabaseSeeder` still creates no `@smoke.test` account.
 The last of those is the guard for decision 2. Wiring `DemoSeeder` into the
 default seeder would be a small, plausible-looking edit, and it now fails a test
 rather than passing review.
+
+One test is unlike the others: it reads the seeder's own source and asserts it
+contains no factory call and no `fake()`. Asserting on source is a blunt
+instrument and is not a habit worth spreading, but it is the only thing that
+works here. The suite always runs with dev dependencies installed, so running
+the seeder can never reproduce the production dependency set that decision 1
+describes. The choice was a source assertion or no guard at all.
 
 ## Consequences
 

@@ -163,3 +163,34 @@ test('the default seeder does not seed publicly known credentials', function () 
     expect(User::query()->where('email', 'like', '%@smoke.test')->exists())->toBeFalse()
         ->and(Organization::query()->where('slug', 'northwind-studio')->exists())->toBeFalse();
 });
+
+/*
+|--------------------------------------------------------------------------
+| Runnable in the production image
+|--------------------------------------------------------------------------
+*/
+
+/**
+ * This seeder is the only application code that runs in the container but
+ * never in a browser request, so nothing else exercises it against a
+ * production dependency set.
+ *
+ * Model factories call `fake()`, which Laravel only defines when
+ * `fakerphp/faker` is loaded. Faker is a `require-dev` package and the image
+ * is built with `composer install --no-dev`, so a factory here passes every
+ * test and then dies in the container with "Call to undefined function
+ * Database\Factories\fake()" — which is how the first deploy failed.
+ *
+ * The suite always runs with dev dependencies present, so this cannot be
+ * caught by running the seeder. It is asserted against the source instead.
+ */
+test('the demo seeder does not reach for anything the production image omits', function () {
+    $source = file_get_contents(database_path('seeders/DemoSeeder.php'));
+
+    // Comments explain why these are absent, so only real code is searched.
+    $code = preg_replace('#/\*.*?\*/|//.*#s', '', $source);
+
+    expect($code)->not->toContain('::factory(')
+        ->and($code)->not->toContain('fake(')
+        ->and($code)->not->toContain('Faker');
+});

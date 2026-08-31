@@ -119,25 +119,30 @@ class DemoSeeder extends Seeder
     /**
      * Create a demo account, or restore an existing one to its known state.
      *
-     * The factory owns the defaults — it is the one place in the project that
-     * knows a user needs a hashed password and a verified address. A re-run
-     * re-applies both, so a password changed during a demo does not leave the
-     * documented credentials wrong.
+     * Deliberately does not use `User::factory()`. Model factories call the
+     * `fake()` helper, which Laravel only defines when `fakerphp/faker` is
+     * loaded, and Faker is a `require-dev` package that the production image
+     * omits (`composer install --no-dev` in docker/app/Dockerfile). A factory
+     * here works locally and fails in the container, which is exactly what
+     * happened on the first deploy. Nothing in this seeder may reach for a
+     * factory; see ADR-012 §1.
+     *
+     * `forceFill` is required rather than stylistic: `email_verified_at` is
+     * outside the model's `#[Fillable]` list and would be silently dropped by
+     * mass assignment, leaving an unverified account that logs in and is then
+     * bounced to the verification page — a login that looks broken. The
+     * password is written through the model's `hashed` cast.
+     *
+     * A re-run re-applies the name, password, and verification, so a password
+     * changed during a demo does not leave the documented credentials wrong.
      */
     private function seedUser(string $email, string $name): User
     {
-        $user = User::query()->firstWhere('email', $email);
-
-        if ($user === null) {
-            return User::factory()->create([
-                'name' => $name,
-                'email' => $email,
-                'password' => self::PASSWORD,
-            ]);
-        }
+        $user = User::query()->firstWhere('email', $email) ?? new User;
 
         $user->forceFill([
             'name' => $name,
+            'email' => $email,
             'password' => self::PASSWORD,
         ])->save();
 
